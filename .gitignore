@@ -7,3 +7,4 @@ pdf/
 venv
 *.egg-info
 *.pyc
+*.txt

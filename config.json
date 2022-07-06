@@ -1,0 +1,46 @@
+{
+    "patterns": {
+        "base": {
+            "heading_1": "Adjusting the Adventure",
+            "heading_2": "Downtime and Lifestyle",
+            "heading_3": "Disease, Poison, and Other Debilitating",
+            "table_title": "Determining Party Strength",
+            "table_heading": "Party Composition Party",
+            "table_text": "5 characters, APL less than",
+            "table_text_italic": "Cure wounds (1st level)",
+            "body": "This adventure is official for D&D Adventurers",
+            "body_bold": "Make decisions and adjudications that enhance",
+            "body_italic": "D&D Basic Rules",
+            "body_bold_italic": "Faction Charity.",
+            "box_heading": "Help From Who!?",
+            "box_text_bold": "one spell per day",
+            "box_text_italic": "Adventurers League Dungeon",
+            "box_text_bold_italic": "Quote:",
+            "box_text": "A character possessing the acolyte background"
+        },
+        "char_override": {
+            "\uf0b7": "bullet",
+            "\u2022": "bullet",
+            "\u0020": "body"
+        },
+        "overrides": {
+            "DDAL04-02": {
+                "frame_body": "Thick grey clouds gather far to the east and north, around"
+            },
+            "DDAL04-10": {
+                "box_text_italic": "wand of binding"
+            },
+            "DDAL04-13": {
+                "frame_body": "It was sheer luck that had your party stumbling across the"
+            }
+        }
+    },
+    "page_span_skip": 2,
+    "never_allow_strings": [
+        "(Order #"
+    ],
+    "stop_processing": [
+        "Appendix. NPC/Monster",
+        "Appendix: NPC Summary"
+    ]
+}
