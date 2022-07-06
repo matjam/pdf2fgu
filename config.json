@@ -37,7 +37,8 @@
     },
     "page_span_skip": 2,
     "never_allow_strings": [
-        "(Order #"
+        "(Order #",
+        "Not for resale"
     ],
     "stop_processing": [
         "Appendix. NPC/Monster",

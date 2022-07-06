@@ -1,6 +1,7 @@
 xml/
 json/
 pdf/
+txt/
 *.pdf
 .DS_Store
 .vscode
