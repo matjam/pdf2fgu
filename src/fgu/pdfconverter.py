@@ -1,10 +1,24 @@
 import fitz
 import json
 import pprint as pprinter
+from .encounter import Encounter, Story
+from .campaign import Campaign
 
 
 pp = pprinter.PrettyPrinter(indent=4)
 pprint = pp.pprint
+
+
+class DictObj:
+    def __init__(self, in_dict: dict):
+        assert isinstance(in_dict, dict)
+        for key, val in in_dict.items():
+            if isinstance(val, (list, tuple)):
+                setattr(
+                    self, key, [DictObj(x) if isinstance(x, dict) else x for x in val]
+                )
+            else:
+                setattr(self, key, DictObj(val) if isinstance(val, dict) else val)
 
 
 class Origin:
@@ -44,6 +58,9 @@ class PageData:
         self.current_page_span = 0
         self.page_bullshit_start = True  # hee hee
 
+        # conversion state
+        self.sections = [0, 0, 0]
+
         # build our dictionaries for searching styles
         self.config = load_config()
         self.module_config = config_for_module(file.split("_")[0], self.config)
@@ -65,7 +82,7 @@ class PageData:
             self.style_names_from_style[self.styles[style]] = style
 
     def add_parsed_span(
-        self, text: str, style: str, style_data: StyleData, origin: Origin
+        self, text: str, style: str, style_data: StyleData, origin: Origin, page: int
     ):
 
         data = {
@@ -73,9 +90,10 @@ class PageData:
             "style_data": style_data.to_dict(),
             "origin": origin.to_dict(),
             "text": text,
+            "page": page,
         }
 
-        self.parsed.append(data)
+        self.parsed.append(DictObj(data))
         # could use JSON but this results in a tighter output
         print(
             f"{self.page_num} {style} style=[{style_data.font} {style_data.size} {style_data.color} {style_data.flags}] origin=[{origin.x},{origin.y}] '{text}'",
@@ -168,11 +186,73 @@ class PageData:
         else:
             style_name = self.style_names_from_style[style]
 
-        self.add_parsed_span(text, style_name, style_data, origin)
+        self.add_parsed_span(text, style_name, style_data, origin, self.page_num)
         self.current_page_span = self.current_page_span + 1
 
-    def convert(self):
-        pass
+    def section_text(self):
+        if self.sections[1] == 0 and self.sections[2] == 0:
+            return f"{self.sections[0]:02}"
+        if self.sections[2] == 0:
+            return f"{self.sections[0]:02}.{self.sections[1]:02}"
+        return f"{self.sections[0]:02}.{self.sections[1]:02}.{self.sections[2]:02}"
+
+    def increment_section(self, section: int):
+        if section == 0:
+            self.sections[0] = self.sections[0] + 1
+            self.sections[1] = 0
+            self.sections[2] = 0
+        elif section == 1:
+            self.sections[1] = self.sections[1] + 1
+            self.sections[2] = 0
+        else:
+            self.sections[2] = self.sections[2] + 1
+
+    def convert(self, campaign_path: str, campaign_name):
+        campaign = Campaign(campaign_path)
+        campaign.create()
+        encounter = Encounter(campaign_name)
+        story = Story(f"00 ({campaign_name})")
+        story.startParagraph()
+        in_title_story = True
+
+        for span in self.parsed:
+
+            if span.style == "heading_1":
+                if story.buildingParagraph:
+                    story.endParagraph
+                encounter.add_story(story.close())
+                self.increment_section(0)
+                story = Story(f"{self.section_text()} {span.text}")
+                story.startParagraph()
+                if in_title_story:
+                    in_title_story = False
+                continue
+
+            # skip anything that appears before the first heading. Yeah,
+            # I know that means we skip some cool quote...
+            if in_title_story and span.page > 0:
+                continue
+
+            if len(span.text) > 0:
+                if span.text[0] == " ":
+                    story.endParagraph()
+                    story.startParagraph()
+                    span.text = span.text[
+                        1:
+                    ]  # remove the space at the start the indicates a new paragraph
+
+            if span.style == "body":
+                story.addText(span.text)
+            elif span.style == "body_bold":
+                story.addText(span.text, bold=True)
+            elif span.style == "body_italic":
+                story.addText(span.text, italic=True)
+            elif span.style == "body_bold_italic":
+                story.addText(span.text, bold=True, italic=True)
+
+        encounter.add_story(story.close())
+        campaign.add_encounter(encounter)
+        campaign.write()
 
 
 def load_config():

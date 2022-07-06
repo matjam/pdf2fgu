@@ -40,8 +40,5 @@
         "(Order #",
         "Not for resale"
     ],
-    "stop_processing": [
-        "Appendix. NPC/Monster",
-        "Appendix: NPC Summary"
-    ]
+    "stop_processing": []
 }
