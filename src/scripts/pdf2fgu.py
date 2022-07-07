@@ -1,8 +1,13 @@
-import click
+"""
+All of the pdf2fgu CLI entrypoints.
+"""
+
 import os
-from fgu.pdfconverter import analyze
 import pprint as pprinter
-from fgu.formattedtext import *
+
+import click
+
+from fgu.pdfconverter import analyze
 
 pp = pprinter.PrettyPrinter(indent=4)
 pprint = pp.pprint
@@ -12,6 +17,10 @@ pprint = pp.pprint
 @click.argument("pdf_path")
 @click.argument("fgu_path")
 def cli(pdf_path, fgu_path):
+    """
+    Performs an import for all .pdf files in PDF_PATH and updates/creates
+    campaigns in FGU_PATH.
+    """
     files = os.listdir(pdf_path)
     for file in files:
         if not file.endswith(".pdf"):

@@ -1,0 +1,20 @@
+{
+    "python.formatting.provider": "black",
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "python.formatting.blackArgs": [
+        "--experimental-string-processing"
+    ],
+    "python.formatting.blackPath": "venv/bin/black",
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": ".py",
+                "cmd": "venv/bin/docformatter --make-summary-multi-line --pre-summary-newline --force-wrap -i ${file}"
+            }
+        ]
+    }
+}

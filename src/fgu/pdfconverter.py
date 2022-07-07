@@ -1,26 +1,68 @@
-from fgu.formattedtext import *
-import fitz
+"""
+Core logic for the conversion of AL PDFs into FGU campaigns.
+"""
+
 import json
-import pprint as pprinter
-from .encounter import Encounter, Story
-from .campaign import Campaign
+from enum import Enum
 from typing import List
 
+import fitz
 
-pp = pprinter.PrettyPrinter(indent=4)
-pprint = pp.pprint
+from fgu.formattedtext import (
+    FormattedHeading,
+    FormattedParagraph,
+    FormattedTableRow,
+    FormattedText,
+    StyledText,
+    StyledTextSegment,
+)
+
+from .campaign import Campaign
+from .encounter import Encounter, Story
 
 
-class Origin:
+class Style(Enum):
+    """
+    Enum type for all supported styles that we use for parsing the PDFs.
+    """
+
+    HEADING_1 = "heading_1"
+    HEADING_2 = "heading_2"
+    HEADING_3 = "heading_3"
+    TABLE_TITLE = "table_title"
+    TABLE_HEADING = "table_heading"
+    TABLE_TEXT = "table_text"
+    TABLE_TEXT_ITALIC = "table_text_italic"
+    BODY = "body"
+    BODY_BOLD = "body_bold"
+    BODY_ITALIC = "body_italic"
+    BODY_BOLD_ITALIC = "body_bold_italic"
+    BOX_HEADING = "box_heading"
+    BOX_TEXT_BOLD = "box_text_bold"
+    BOX_TEXT_ITALIC = "box_text_italic"
+    BOX_TEXT_BOLD_ITALIC = "box_text_bold_italic"
+    BOX_TEXT = "box_text"
+    BULLET = "bullet"
+    FRAME_BODY = "frame_body"
+
+
+class OriginData:
+    """
+    Actual x & y co-ordinates on the page for a span.
+
+    Useful when trying to figure out the relationship of spans.
+    """
+
     def __init__(self, x: int, y: int):
         self.x = x
         self.y = y
 
-    def to_dict(self) -> dict:
-        return {"x": self.x, "y": self.y}
-
 
 class StyleData:
+    """
+    Provides information about the style as extracted from the PDF.
+    """
+
     def __init__(self, font: str, size: float, flags: int, color: str):
         self.font = font
         self.size = size
@@ -28,18 +70,46 @@ class StyleData:
         self.color = color
 
 
+class LocationData:
+    """
+    Provides the original location in the page, block, line and span of a
+    specific span.
+    """
+
+    def __init__(self, page: int, block: int, line: int, span: int):
+        self.page = page
+        self.block = block
+        self.line = line
+        self.span = span
+
+
 class Data:
+    """
+    Each parsed span of data from the PDF, with all of the information we used
+    to make parsing decisions extracted from the PDF data.
+    """
+
     def __init__(
-        self, style: str, style_data: StyleData, origin: Origin, text: str, page: int
+        self,
+        style: str,
+        style_data: StyleData,
+        origin: OriginData,
+        text: str,
+        location: LocationData,
     ):
         self.style = style
         self.style_data = style_data
         self.origin = origin
         self.text = text
-        self.page = page
+        self.location = location
 
 
 class PageData:
+    """
+    Contains all of the data for a PDF and the methods we use to do the actual
+    conversion into FGU xml.
+    """
+
     def __init__(self, file: str, pages: dict):
         self.pages = pages
         self.module_name = file.replace("_", " ").removesuffix(".pdf")
@@ -51,12 +121,24 @@ class PageData:
         self.current_page_span = 0
         self.page_bullshit_start = True  # hee hee
 
+        self.page_num = 0
+        self.block_num = 0
+        self.line_num = 0
+        self.span_num = 0
+
         # conversion state
         self.sections = [0, 0, 0]
+        self.encounters = None
+        self.previous_data = None  # type:Data
+        self.current_heading_3 = None
+        self.current_styledtext = None
+        self.current_box = None
+        self.paragraph = None
+        self.current_story = None
 
         # build our dictionaries for searching styles
-        self.config = load_config()
-        self.module_config = config_for_module(file.split("_")[0], self.config)
+        self.config = _load_config()
+        self.module_config = _config_for_module(file.split("_")[0], self.config)
 
         # parse out all the styles and store them for the parsing stage
         self.styles = {}
@@ -66,18 +148,27 @@ class PageData:
             )
             if not self.styles[style_name]:
                 print(
-                    f"warning: could not find '{style_name}' using '{self.module_config[style_name]}' in {file}. This is probably ok."
+                    f"warning: could not find '{style_name}' using"
+                    f" '{self.module_config[style_name]}' in {file}. This is"
+                    " probably ok."
                 )
 
         # make a dict we can use to look up the style_name from the style.
         self.style_names_from_style = {}
-        for style in self.styles:
-            self.style_names_from_style[self.styles[style]] = style
+        for style_name, style_data in self.styles.items():
+            self.style_names_from_style[style_data] = style_name
 
     def add_parsed_span(
-        self, text: str, style: str, style_data: StyleData, origin: Origin, page: int
+        self,
+        text: str,
+        style: str,
+        style_data: StyleData,
+        origin: OriginData,
+        page: int,
     ):
-
+        """
+        Function used to build the array that holds all the parsed page data.
+        """
         data = Data(
             style,
             style_data,
@@ -89,7 +180,9 @@ class PageData:
         self.data.append(data)
         # could use JSON but this results in a tighter output
         print(
-            f"{self.page_num} {style} style=[{style_data.font} {style_data.size} {style_data.color} {style_data.flags}] origin=[{origin.x},{origin.y}] '{text}'",
+            f"{self.page_num} {style}"
+            + f" style=[{style_data.font} {style_data.size} {style_data.color} {style_data.flags}]"
+            + f" origin=[{origin.x},{origin.y}] '{text}'",
             file=self.output,
         )
 
@@ -101,28 +194,36 @@ class PageData:
             for block in page["blocks"]:
                 for line in block["lines"]:
                     for span in line["spans"]:
-                        style = f"{span['font']} {span['size']} {span['flags']} {span['color']}"
+                        style = (
+                            f"{span['font']} {span['size']} {span['flags']} {span['color']}"
+                        )
                         if text in span["text"].strip().lstrip():
                             return style
         return None
 
     def parse(self):
+        """
+        runs the parsing logic which will construct the internal structures for
+        all Stories.
+        """
         with open(f"txt/{self.module_name}.txt", "w", encoding="utf-8") as self.output:
-            # theoretically we now have all the style information we need. Now we just iterate over the text
-            # and extract all the structure we need.
+            # theoretically we now have all the style information we need. Now we
+            # just iterate over the text and extract all the structure we need.
             for self.page_num, page in enumerate(self.pages):
-                for block in page["blocks"]:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            self.parse_span(span)
+                for self.block_num, block in enumerate(page["blocks"]):
+                    for self.line_num, line in enumerate(block["lines"]):
+                        for self.span_num, span in enumerate(line["spans"]):
+                            self._parse_span(span)
                             if self.stop_parsing:
                                 return
 
-    def parse_span(self, span):
+    def _parse_span(self, span):
+        """
+        performs the parsing on a given span.
+        """
         style = f"{span['font']} {span['size']} {span['flags']} {span['color']}"
         style_data = StyleData(span["font"], span["size"], span["flags"], span["color"])
         text = span["text"]
-        origin = Origin(int(span["origin"][0]), int(span["origin"][1]))
         for stop_processing_text in self.config["stop_processing"]:
             if text.lstrip().strip() == stop_processing_text:
                 self.stop_parsing = True
@@ -179,17 +280,26 @@ class PageData:
         else:
             style_name = self.style_names_from_style[style]
 
-        self.add_parsed_span(text, style_name, style_data, origin, self.page_num)
+        self.add_parsed_span(
+            text,
+            style_name,
+            style_data,
+            OriginData(int(span["origin"][0]), int(span["origin"][1])),
+            LocationData(self.page_num, self.block_num, self.line_num, self.span_num),
+        )
         self.current_page_span = self.current_page_span + 1
 
-    def section_text(self):
+    def _section_text(self):
+        """
+        generates a string that is used as the prefix for new Story.
+        """
         if self.sections[1] == 0 and self.sections[2] == 0:
             return f"{self.sections[0]:02}"
         if self.sections[2] == 0:
             return f"{self.sections[0]:02}.{self.sections[1]:02}"
         return f"{self.sections[0]:02}.{self.sections[1]:02}.{self.sections[2]:02}"
 
-    def increment_section(self, section: int):
+    def _increment_section(self, section: int):
         if section == 0:
             self.sections[0] = self.sections[0] + 1
             self.sections[1] = 0
@@ -200,11 +310,14 @@ class PageData:
         else:
             self.sections[2] = self.sections[2] + 1
 
-    def new_story(self, name, level) -> Story:
-        self.increment_section(level)
-        return Story(f"{self.section_text()} {name}", text=FormattedText())
+    def _new_story(self, name, level) -> Story:
+        self._increment_section(level)
+        return Story(f"{self._section_text()} {name}", text=FormattedText())
 
     def convert(self, campaign_path: str, campaign_name):
+        """
+        performs all conversion on the parsed data and outputs the campaign.
+        """
         self.encounters = Encounter(campaign_name)
 
         self.previous_data = None
@@ -217,14 +330,14 @@ class PageData:
         self.encounters.append_story(self.current_story)
 
         handlers = {
-            "heading_1": self.convert_heading_1,
-            "heading_2": self.convert_heading_2,
-            "heading_3": self.convert_heading_3,
-            "body": self.convert_body,
-            "body_bold": self.convert_body,
-            "body_italic": self.convert_body,
-            "body_bold_italic": self.convert_body,
-            "box_heading": self.convert_box_heading,
+            "heading_1": self._convert_heading_1,
+            "heading_2": self._convert_heading_2,
+            "heading_3": self._convert_heading_3,
+            "body": self._convert_body,
+            "body_bold": self._convert_body,
+            "body_italic": self._convert_body,
+            "body_bold_italic": self._convert_body,
+            "box_heading": self._convert_box_heading,
         }
 
         for data in self.data:
@@ -237,7 +350,7 @@ class PageData:
         campaign = Campaign(campaign_path, self.encounters)
         campaign.build()
 
-    def convert_heading_1(self, data: Data):
+    def _convert_heading_1(self, data: Data):
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_1"
@@ -250,10 +363,10 @@ class PageData:
             return
 
         self.paragraph = None
-        self.current_story = self.new_story(data.text, 0)
+        self.current_story = self._new_story(data.text, 0)
         self.encounters.append_story(self.current_story)
 
-    def convert_heading_2(self, data: Data):
+    def _convert_heading_2(self, data: Data):
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_2"
@@ -264,10 +377,10 @@ class PageData:
             return
 
         self.paragraph = None
-        self.current_story = self.new_story(data.text, 1)
+        self.current_story = self._new_story(data.text, 1)
         self.encounters.append_story(self.current_story)
 
-    def convert_heading_3(self, data: Data):
+    def _convert_heading_3(self, data: Data):
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_3"
@@ -281,7 +394,7 @@ class PageData:
         self.current_heading_3 = FormattedHeading(data.text)
         self.current_story.text.append(self.current_heading_3)
 
-    def convert_body(self, data: Data):
+    def _convert_body(self, data: Data):
         bold = False
         italic = False
         if "bold" in data.style:
@@ -316,25 +429,26 @@ class PageData:
         else:
             self.paragraph.text.append(self.current_styledtext)
 
-    def convert_box_heading(self, data: Data):
-        if self.current_box is not None:
-            # Already in a box? ok
-            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-            self.current_box.rows[0].columns[0].append(box_heading)
-        else:
-            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-            row = FormattedTableRow([box_heading])
-            self.current_box = FormattedTable([row])
-            self.current_story.text.append(self.current_box)
+    def _convert_box_heading(self, data: Data):
+        pass
+        # if self.current_box is not None:
+        #     # Already in a box? ok
+        #     box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+        #     self.current_box.rows[0].columns[0].append(box_heading)
+        # else:
+        #     box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+        #     row = FormattedTableRow([box_heading])
+        #     self.current_box = FormattedTable([row])
+        #     self.current_story.text.append(self.current_box)
 
 
-def load_config():
-    with open("config.json", "r") as f:
-        data = f.read()
+def _load_config():
+    with open("config.json", "r", encoding="utf-8") as in_file:
+        data = in_file.read()
     return json.loads(data)
 
 
-def config_for_module(code, config):
+def _config_for_module(code, config):
     module_config = config["patterns"]["base"]
     if code in config["patterns"]["overrides"]:
         for style in config["patterns"]["overrides"][code]:
@@ -343,12 +457,16 @@ def config_for_module(code, config):
 
 
 def analyze(path: str, file: str) -> PageData:
+    """
+    performs initial style analysis, and will flag any issues before you
+    attempt to run the conversion.
+    """
     file_path = f"{path}/{file}"
     doc = fitz.open(file_path)
     pages = []
     for page in doc.pages():
-        textpage = page.get_textpage()
-        d = textpage.extractDICT()
-        pages.append(d)
+        text_page = page.get_textpage()
+        text_dict = text_page.extractDICT()
+        pages.append(text_dict)
 
     return PageData(file, pages)

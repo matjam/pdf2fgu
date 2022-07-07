@@ -1,9 +1,18 @@
-from xml.etree import ElementTree as ET
-from .encounter import Encounter
+"""
+This module implements classes for managing FGU Campaigns.
+"""
+
 import os
+from xml.etree import ElementTree as ET
+
+from .encounter import Encounter
 
 
 class Campaign:
+    """
+    A class for creating and updating an FGU Campaign.
+    """
+
     _campaign_registry = """
 {
 	["sidebarvisibility"] = 0,
@@ -29,9 +38,11 @@ class Campaign:
 
     def create(self):
         """
-        will only overwrite files if they are missing. It actually doesn't seem you need to do
-        anything other than drop a db.xml; FGU will try to do the right thing and make the
-        other files you need. But we'll do this...
+        will only overwrite files if they are missing.
+
+        It actually doesn't seem you need to do anything other than drop
+        a db.xml; FGU will try to do the right thing and make the other
+        files you need. But we'll do this...
         """
         print(f"creating campaign at {self.path}")
 
@@ -39,16 +50,16 @@ class Campaign:
             os.mkdir(self.path)
 
         if not os.path.isfile(f"{self.path}/campaign.xml"):
-            campaignXMLroot = ET.Element("root")
-            campaignXMLroot.set("version", "4.2")
-            campaignXMLroot.set("dataversion", "20220411")
-            ET.SubElement(campaignXMLroot, "ruleset").text = "5E"
-            ET.SubElement(campaignXMLroot, "server").text = "personal"
-            ET.SubElement(campaignXMLroot, "port").text = "1802"
+            campaign_xml_root = ET.Element("root")
+            campaign_xml_root.set("version", "4.2")
+            campaign_xml_root.set("dataversion", "20220411")
+            ET.SubElement(campaign_xml_root, "ruleset").text = "5E"
+            ET.SubElement(campaign_xml_root, "server").text = "personal"
+            ET.SubElement(campaign_xml_root, "port").text = "1802"
 
-            tree = ET.ElementTree(campaignXMLroot)
-            with open(f"{self.path}/campaign.xml", "wb") as f:
-                tree.write(f, encoding="utf-8", xml_declaration=True)
+            tree = ET.ElementTree(campaign_xml_root)
+            with open(f"{self.path}/campaign.xml", "wb") as output:
+                tree.write(output, encoding="utf-8", xml_declaration=True)
 
         if not os.path.isfile(f"{self.path}/db.xml"):
             db_xml_root = ET.Element("root")
@@ -59,14 +70,23 @@ class Campaign:
             tree = ET.ElementTree(db_xml_root)
             ET.indent(db_xml_root, space="\t")
 
-            with open(f"{self.path}/db.xml", "wb") as f:
-                tree.write(f, encoding="utf-8", xml_declaration=True)
+            with open(f"{self.path}/db.xml", "wb") as output:
+                tree.write(output, encoding="utf-8", xml_declaration=True)
 
         if not os.path.isfile(f"{self.path}/CampaignRegistry.lua"):
-            with open(f"{self.path}/CampaignRegistry.lua", "w") as f:
-                print(self._campaign_registry, file=f)
+            with open(
+                f"{self.path}/CampaignRegistry.lua", "w", encoding="utf-8"
+            ) as output:
+                print(self._campaign_registry, file=output)
 
     def build(self):
+        """
+        Builds the campaign db.xml file by building the encounter structure
+        under it. Note that we preserve all the other data in the db.xml
+        currently; however all data under the.
+
+        <encounter> section will be removed and replaced.
+        """
         self.tree = ET.parse(f"{self.path}/db.xml")
         self.root = self.tree.getroot()
 
@@ -79,5 +99,5 @@ class Campaign:
         self.root.append(builder.close())
 
         ET.indent(self.tree, space="\t")
-        with open(f"{self.path}/db.xml", "wb") as f:
-            self.tree.write(f, encoding="utf-8", xml_declaration=True)
+        with open(f"{self.path}/db.xml", "wb") as output:
+            self.tree.write(output, encoding="utf-8", xml_declaration=True)

@@ -4,7 +4,7 @@ pdf/
 txt/
 *.pdf
 .DS_Store
-.vscode
+.vscode/launch.json
 venv
 *.egg-info
 *.pyc
