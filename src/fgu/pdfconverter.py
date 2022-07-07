@@ -1,3 +1,4 @@
+from fgu.formattedtext import *
 import fitz
 import json
 import pprint as pprinter
@@ -8,18 +9,6 @@ from typing import List
 
 pp = pprinter.PrettyPrinter(indent=4)
 pprint = pp.pprint
-
-
-class DictObj:
-    def __init__(self, in_dict: dict):
-        assert isinstance(in_dict, dict)
-        for key, val in in_dict.items():
-            if isinstance(val, (list, tuple)):
-                setattr(
-                    self, key, [DictObj(x) if isinstance(x, dict) else x for x in val]
-                )
-            else:
-                setattr(self, key, DictObj(val) if isinstance(val, dict) else val)
 
 
 class Origin:
@@ -38,13 +27,16 @@ class StyleData:
         self.flags = flags
         self.color = color
 
-    def to_dict(self) -> dict:
-        return {
-            "font": self.font,
-            "size": self.size,
-            "flags": self.flags,
-            "color": self.color,
-        }
+
+class Data:
+    def __init__(
+        self, style: str, style_data: StyleData, origin: Origin, text: str, page: int
+    ):
+        self.style = style
+        self.style_data = style_data
+        self.origin = origin
+        self.text = text
+        self.page = page
 
 
 class PageData:
@@ -53,7 +45,7 @@ class PageData:
         self.module_name = file.replace("_", " ").removesuffix(".pdf")
 
         # parsing state
-        self.parsed = []
+        self.data = []  # type:List[Data]
         self.output = None  # output file when parsing
         self.stop_parsing = False
         self.current_page_span = 0
@@ -86,15 +78,15 @@ class PageData:
         self, text: str, style: str, style_data: StyleData, origin: Origin, page: int
     ):
 
-        data = {
-            "style": style,
-            "style_data": style_data.to_dict(),
-            "origin": origin.to_dict(),
-            "text": text,
-            "page": page,
-        }
+        data = Data(
+            style,
+            style_data,
+            origin,
+            text,
+            page,
+        )
 
-        self.parsed.append(DictObj(data))
+        self.data.append(data)
         # could use JSON but this results in a tighter output
         print(
             f"{self.page_num} {style} style=[{style_data.font} {style_data.size} {style_data.color} {style_data.flags}] origin=[{origin.x},{origin.y}] '{text}'",
@@ -208,97 +200,132 @@ class PageData:
         else:
             self.sections[2] = self.sections[2] + 1
 
+    def new_story(self, name, level) -> Story:
+        self.increment_section(level)
+        return Story(f"{self.section_text()} {name}", text=FormattedText())
+
     def convert(self, campaign_path: str, campaign_name):
-        campaign = Campaign(campaign_path)
-        campaign.create()
-        encounter = Encounter(campaign_name)
-        story = Story(f"00 ({campaign_name})")
-        story.startParagraph()
-        in_title_story = True
-        skip_span = False
+        self.encounters = Encounter(campaign_name)
 
-        previous_span_ended_in_a_period = False
+        self.previous_data = None
+        self.current_heading_3 = None  # type:FormattedHeading
+        self.current_styledtext = None  # type:StyledText
+        self.current_box = None  # type:FormattedTableRow
+        self.paragraph = None
 
-        for n, span in enumerate(self.parsed):
-            if skip_span:
-                skip_span = False
-                continue
+        self.current_story = Story(f"00 ({campaign_name})", text=FormattedText())
+        self.encounters.append_story(self.current_story)
 
-            if span.style == "heading_1":
-                if story.buildingParagraph:
-                    story.endParagraph
-                encounter.add_story(story.close())
-                self.increment_section(0)
+        handlers = {
+            "heading_1": self.convert_heading_1,
+            "heading_2": self.convert_heading_2,
+            "heading_3": self.convert_heading_3,
+            "body": self.convert_body,
+            "body_bold": self.convert_body,
+            "body_italic": self.convert_body,
+            "body_bold_italic": self.convert_body,
+            "box_heading": self.convert_box_heading,
+        }
 
-                story_name = span.text
+        for data in self.data:
+            if data.style in handlers:
+                handlers[data.style](data)
 
-                # sometimes headings get wrapped
+            # just in case we need it to make decisions for the next loop
+            self.previous_data = data
 
-                if (
-                    len(self.parsed) >= n + 1
-                    and self.parsed[n + 1].style == "heading_1"
-                ):
-                    story_name = story_name + self.parsed[n + 1].text
-                    skip_span = True
+        campaign = Campaign(campaign_path, self.encounters)
+        campaign.build()
 
-                story = Story(f"{self.section_text()} {story_name}")
-                story.startParagraph()
-                if in_title_story:
-                    in_title_story = False
-                continue
+    def convert_heading_1(self, data: Data):
+        if (
+            self.previous_data is not None
+            and self.previous_data.style == "heading_1"
+            and data.page == self.previous_data.page
+        ):
+            # oops this was a heading that wrapped, append it to the current story title.
+            # this is why we do all this shit in memory rather than trying to construct
+            # the XML in one pass. SMRT SMART
+            self.current_story.name = self.current_story.name + data.text
+            return
 
-            # skip anything that appears before the first heading. Yeah,
-            # I know that means we skip some cool quote...
-            if in_title_story and span.page > 0:
-                continue
+        self.paragraph = None
+        self.current_story = self.new_story(data.text, 0)
+        self.encounters.append_story(self.current_story)
 
-            if len(span.text) > 0 and previous_span_ended_in_a_period:
-                if span.text[0] == " " and story.buildingParagraph:
-                    story.endParagraph()
-                    story.startParagraph()
-                    span.text = span.text[
-                        1:
-                    ]  # remove the space at the start the indicates a new paragraph
-                elif story.buildingListEntry:
-                    story.endListEntry()
-                    story.endList()
-                    story.startParagraph()
+    def convert_heading_2(self, data: Data):
+        if (
+            self.previous_data is not None
+            and self.previous_data.style == "heading_2"
+            and data.page == self.previous_data.page
+        ):
+            # oops this was a heading_2 that wrapped, append it to the current heading_2
+            self.current_story.name = self.current_story.name + data.text
+            return
 
-            if span.style == "body":
-                story.addText(span.text)
-            elif span.style == "body_bold":
-                story.addText(span.text, bold=True)
-            elif span.style == "body_italic":
-                story.addText(span.text, italic=True)
-            elif span.style == "body_bold_italic":
-                story.addText(span.text, bold=True, italic=True)
-            elif span.style == "bullet":
-                if story.buildingParagraph:
-                    story.endParagraph()
-                    story.startList()
-                    story.startListEntry()
-                elif story.buildingListEntry:
-                    story.endListEntry()
-                    story.startListEntry()
+        self.paragraph = None
+        self.current_story = self.new_story(data.text, 1)
+        self.encounters.append_story(self.current_story)
 
-            if span.text.strip().endswith(".") or span.text.strip().endswith(")"):
-                previous_span_ended_in_a_period = True
-            else:
-                previous_span_ended_in_a_period = False
+    def convert_heading_3(self, data: Data):
+        if (
+            self.previous_data is not None
+            and self.previous_data.style == "heading_3"
+            and data.page == self.previous_data.page
+        ):
+            # oops this was a heading_3 that wrapped, append it to the current heading_3
+            self.current_heading_3.text = self.current_heading_3.text + data.text
+            return
 
-        encounter.add_story(story.close())
-        campaign.add_encounter(encounter)
-        campaign.write()
+        self.paragraph = None
+        self.current_heading_3 = FormattedHeading(data.text)
+        self.current_story.text.append(self.current_heading_3)
 
-    def process(self, campaign_path: str, campaign_name):
-        """
-        preprocessing step to convert spans into headings, paragraphs, lists, etc. The reason we
-        do this is because once you add stuff to an xml ElementTreeBuilder it requires a lot of
-        messing about to come back and fix it up.
-        """
+    def convert_body(self, data: Data):
+        bold = False
+        italic = False
+        if "bold" in data.style:
+            bold = True
+        if "italic" in data.style:
+            italic = True
 
-        for n, span in enumerate(self.parsed):
-            pass
+        segment = StyledTextSegment(data.text, bold=bold, italic=italic)
+        if (
+            self.previous_data is not None
+            and "body" in self.previous_data.style
+            and self.current_styledtext is not None
+        ):
+            # we probably add this to the current styledtext block, but we need to check if it
+            # might be a new paragraph
+            if self.current_styledtext.last_segment().strip().endswith(
+                "."
+            ) and data.text.startswith(" "):
+                # probably a good bet it's a new paragraph. Not sure what else to go on.
+                self.current_styledtext = StyledText([segment])
+                self.paragraph = FormattedParagraph(self.current_styledtext)
+                self.current_story.text.append(self.paragraph)
+                return
+
+            self.current_styledtext.append(segment)
+            return
+
+        self.current_styledtext = StyledText([segment])
+        if self.paragraph is None:
+            self.paragraph = FormattedParagraph(self.current_styledtext)
+            self.current_story.text.append(self.paragraph)
+        else:
+            self.paragraph.text.append(self.current_styledtext)
+
+    def convert_box_heading(self, data: Data):
+        if self.current_box is not None:
+            # Already in a box? ok
+            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+            self.current_box.rows[0].columns[0].append(box_heading)
+        else:
+            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+            row = FormattedTableRow([box_heading])
+            self.current_box = FormattedTable([row])
+            self.current_story.text.append(self.current_box)
 
 
 def load_config():

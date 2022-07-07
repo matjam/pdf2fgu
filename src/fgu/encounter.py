@@ -1,22 +1,6 @@
 import xml.etree.ElementTree as ET
 from .formattedtext import *
-
-
-class Encounter:
-    """
-    Object to hold all of the encounter stories generated.
-    """
-
-    def __init__(self, group_name: str):
-        self.encounter_root = ET.Element("encounter")
-        self.category = ET.SubElement(self.encounter_root, "category")
-        self.category.set("name", group_name)
-
-    def add_story(self, story: ET.Element):
-        self.category.append(story)
-
-    def encounter(self) -> ET.Element:
-        return self.encounter_root
+from typing import List
 
 
 class Story:
@@ -34,15 +18,14 @@ class Story:
 
     currentID = 1
 
-    def __init__(self, name, *, locked=False, text=FormattedText()):
+    def __init__(self, name, *, locked=False, text: FormattedText):
         self.id = Story.currentID
         Story.currentID = Story.currentID + 1
         self.name = name
         self.locked = locked
         self.text = text
 
-    def build(self):
-        builder = ET.TreeBuilder()
+    def build(self, builder):
         builder.start(f"id-{self.id:05d}", {})
 
         if self.locked:
@@ -55,7 +38,6 @@ class Story:
         builder.end("name")
         self.text.build(builder)
         builder.end(f"id-{self.id:05d}")
-        return builder.close()
 
     def addPartyStrengthTable(self):
         partyStrengthTable = [
@@ -69,3 +51,25 @@ class Story:
             ["6-7 characters, APL equivalent", "Strong"],
             ["6-7 characters, APL greater than", "Very strong"],
         ]
+
+
+class Encounter:
+    """
+    Object to hold all of the encounter stories generated. You can mess around with the stories
+    member variable as much as you like until you call build().
+    """
+
+    def __init__(self, group_name: str):
+        self.group_name = group_name
+        self.stories = []  # type: List[Story]
+
+    def build(self, builder: ET.TreeBuilder):
+        builder.start("encounter", {})
+        builder.start("category", {"name": self.group_name})
+        for story in self.stories:
+            story.build(builder)
+        builder.end("category")
+        builder.end("encounter")
+
+    def append_story(self, story: Story):
+        self.stories.append(story)

@@ -46,6 +46,12 @@ class StyledText(FormattedTextObject):
         for text in self.data:
             text.build(builder)
 
+    def append(self, segment: StyledTextSegment):
+        self.data.append(segment)
+
+    def last_segment(self) -> str:
+        return self.data[-1].text
+
 
 class FormattedList(FormattedTextObject):
     def __init__(self, items: List[StyledText]):
