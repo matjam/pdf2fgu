@@ -3,6 +3,7 @@ import json
 import pprint as pprinter
 from .encounter import Encounter, Story
 from .campaign import Campaign
+from typing import List
 
 
 pp = pprinter.PrettyPrinter(indent=4)
@@ -214,15 +215,33 @@ class PageData:
         story = Story(f"00 ({campaign_name})")
         story.startParagraph()
         in_title_story = True
+        skip_span = False
 
-        for span in self.parsed:
+        previous_span_ended_in_a_period = False
+
+        for n, span in enumerate(self.parsed):
+            if skip_span:
+                skip_span = False
+                continue
 
             if span.style == "heading_1":
                 if story.buildingParagraph:
                     story.endParagraph
                 encounter.add_story(story.close())
                 self.increment_section(0)
-                story = Story(f"{self.section_text()} {span.text}")
+
+                story_name = span.text
+
+                # sometimes headings get wrapped
+
+                if (
+                    len(self.parsed) >= n + 1
+                    and self.parsed[n + 1].style == "heading_1"
+                ):
+                    story_name = story_name + self.parsed[n + 1].text
+                    skip_span = True
+
+                story = Story(f"{self.section_text()} {story_name}")
                 story.startParagraph()
                 if in_title_story:
                     in_title_story = False
@@ -233,13 +252,17 @@ class PageData:
             if in_title_story and span.page > 0:
                 continue
 
-            if len(span.text) > 0:
-                if span.text[0] == " ":
+            if len(span.text) > 0 and previous_span_ended_in_a_period:
+                if span.text[0] == " " and story.buildingParagraph:
                     story.endParagraph()
                     story.startParagraph()
                     span.text = span.text[
                         1:
                     ]  # remove the space at the start the indicates a new paragraph
+                elif story.buildingListEntry:
+                    story.endListEntry()
+                    story.endList()
+                    story.startParagraph()
 
             if span.style == "body":
                 story.addText(span.text)
@@ -249,10 +272,33 @@ class PageData:
                 story.addText(span.text, italic=True)
             elif span.style == "body_bold_italic":
                 story.addText(span.text, bold=True, italic=True)
+            elif span.style == "bullet":
+                if story.buildingParagraph:
+                    story.endParagraph()
+                    story.startList()
+                    story.startListEntry()
+                elif story.buildingListEntry:
+                    story.endListEntry()
+                    story.startListEntry()
+
+            if span.text.strip().endswith(".") or span.text.strip().endswith(")"):
+                previous_span_ended_in_a_period = True
+            else:
+                previous_span_ended_in_a_period = False
 
         encounter.add_story(story.close())
         campaign.add_encounter(encounter)
         campaign.write()
+
+    def process(self, campaign_path: str, campaign_name):
+        """
+        preprocessing step to convert spans into headings, paragraphs, lists, etc. The reason we
+        do this is because once you add stuff to an xml ElementTreeBuilder it requires a lot of
+        messing about to come back and fix it up.
+        """
+
+        for n, span in enumerate(self.parsed):
+            pass
 
 
 def load_config():

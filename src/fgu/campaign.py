@@ -5,9 +5,18 @@ import os
 
 _campaign_registry = """
 {
+	["sidebarvisibility"] = 0,
 	["setup"] = true,
-	["OptHRDD"] = "",
 	["OptDDCL-custom"] = "",
+	["OptHRDD"] = "",
+	["sidebarexpand"] = {
+		[1] = "tool",
+		[2] = "campaign",
+		[3] = "player",
+		[4] = "library",
+		[5] = "create",
+	},
+	["sidebarversion"] = 2,
 }
 """
 

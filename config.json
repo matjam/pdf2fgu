@@ -16,7 +16,8 @@
             "box_text_bold": "one spell per day",
             "box_text_italic": "Adventurers League Dungeon",
             "box_text_bold_italic": "Quote:",
-            "box_text": "A character possessing the acolyte background"
+            "box_text": "A character possessing the acolyte background",
+            "bullet": "\uf0b7"
         },
         "char_override": {
             "\uf0b7": "bullet",
