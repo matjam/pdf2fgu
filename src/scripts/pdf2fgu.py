@@ -22,11 +22,14 @@ def cli(pdf_path, fgu_path):
     campaigns in FGU_PATH.
     """
     files = os.listdir(pdf_path)
+    files.sort()
     for file in files:
         if not file.endswith(".pdf"):
             continue
 
         campaign_name = file.removesuffix(".pdf").replace("_", " ")
+
+        print(f"converting file [{file}] campaign [{campaign_name}] ...")
 
         page_data = analyze(pdf_path, file)
         page_data.parse()

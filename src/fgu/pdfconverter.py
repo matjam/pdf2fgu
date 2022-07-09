@@ -2,11 +2,15 @@
 Core logic for the conversion of AL PDFs into FGU campaigns.
 """
 
+from __future__ import annotations
+
 import json
+from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
 import fitz
+from dataclass_wizard import JSONWizard
 
 from fgu.formattedtext import (
     FormattedHeading,
@@ -46,6 +50,7 @@ class Style(Enum):
     FRAME_BODY = "frame_body"
 
 
+@dataclass
 class OriginData:
     """
     Actual x & y co-ordinates on the page for a span.
@@ -53,55 +58,47 @@ class OriginData:
     Useful when trying to figure out the relationship of spans.
     """
 
-    def __init__(self, x: int, y: int):
-        self.x = x
-        self.y = y
+    x: int
+    y: int
 
 
+@dataclass
 class StyleData:
     """
     Provides information about the style as extracted from the PDF.
     """
 
-    def __init__(self, font: str, size: float, flags: int, color: str):
-        self.font = font
-        self.size = size
-        self.flags = flags
-        self.color = color
+    font: str
+    size: float
+    flags: int
+    color: str
 
 
+@dataclass
 class LocationData:
     """
     Provides the original location in the page, block, line and span of a
     specific span.
     """
 
-    def __init__(self, page: int, block: int, line: int, span: int):
-        self.page = page
-        self.block = block
-        self.line = line
-        self.span = span
+    page: int
+    block: int
+    line: int
+    span: int
 
 
-class Data:
+@dataclass
+class Data(JSONWizard):
     """
     Each parsed span of data from the PDF, with all of the information we used
     to make parsing decisions extracted from the PDF data.
     """
 
-    def __init__(
-        self,
-        style: str,
-        style_data: StyleData,
-        origin: OriginData,
-        text: str,
-        location: LocationData,
-    ):
-        self.style = style
-        self.style_data = style_data
-        self.origin = origin
-        self.text = text
-        self.location = location
+    style: Style
+    style_data: StyleData
+    origin: OriginData
+    text: str
+    location: LocationData
 
 
 class PageData:
@@ -354,7 +351,7 @@ class PageData:
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_1"
-            and data.page == self.previous_data.page
+            and data.location.page == self.previous_data.location.page
         ):
             # oops this was a heading that wrapped, append it to the current story title.
             # this is why we do all this shit in memory rather than trying to construct
@@ -370,7 +367,7 @@ class PageData:
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_2"
-            and data.page == self.previous_data.page
+            and data.location.page == self.previous_data.location.page
         ):
             # oops this was a heading_2 that wrapped, append it to the current heading_2
             self.current_story.name = self.current_story.name + data.text
@@ -384,7 +381,7 @@ class PageData:
         if (
             self.previous_data is not None
             and self.previous_data.style == "heading_3"
-            and data.page == self.previous_data.page
+            and data.location.page == self.previous_data.location.page
         ):
             # oops this was a heading_3 that wrapped, append it to the current heading_3
             self.current_heading_3.text = self.current_heading_3.text + data.text
