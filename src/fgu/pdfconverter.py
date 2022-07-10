@@ -1,5 +1,8 @@
 """
 Core logic for the conversion of AL PDFs into FGU campaigns.
+
+if I was to rewrite this I would use a generator and use recursive
+functions to represent the parser state.
 """
 
 from __future__ import annotations
@@ -104,6 +107,10 @@ class Data(JSONWizard):
 
 
 def segment_from_data(data: Data) -> StyledTextSegment:
+    """
+    helper to make a StyledTextSegment using the bold/italic information in the
+    style.
+    """
     bold = False
     italic = False
     if "bold" in data.style:
@@ -151,6 +158,7 @@ class PageData:
         self.current_table = None
         self.current_table_row = None
         self.current_table_heading_count = 0
+        self.lstrip_next_line = False
 
         # build our dictionaries for searching styles
         self.config = _load_config()
@@ -402,6 +410,10 @@ class PageData:
             "body_italic": self._convert_body,
             "body_bold_italic": self._convert_body,
             "box_heading": self._convert_box_heading,
+            "box_text": self._convert_box_text,
+            "box_text_bold": self._convert_box_text,
+            "box_text_italic": self._convert_box_text,
+            "box_text_bold_italic": self._convert_box_text,
             "bullet": self._convert_bullet,
             "table_title": self._convert_table_title,
             "table_heading": self._convert_table_heading,
@@ -427,6 +439,7 @@ class PageData:
     def _reset_all_conversion_state(self):
         self.current_styledtext = None
         self.current_box = None
+        self.current_box_text = None  # type: StyledText
         self.current_paragraph = None
         self.current_story = None
         self.current_bullet = None
@@ -438,6 +451,7 @@ class PageData:
     def _reset_paragraph_conversion_state(self):
         self.current_styledtext = None
         self.current_box = None
+        self.current_box_text = None  # type: StyledText
         self.current_paragraph = None
         self.current_bullet = None
         self.current_bullet_x = None
@@ -509,6 +523,11 @@ class PageData:
 
         # create a segment out of the body we get. We'll use it.
         segment = segment_from_data(data)
+
+        # if we're building a box, we need to break out of that.
+        if self.current_box is not None:
+            self.current_box = None
+            self.current_box_text = None
 
         # if we're building bullets text and the next span we get is further to the left than
         # the first data we saw after starting a bullet then it's a good bet we're done with
@@ -590,16 +609,61 @@ class PageData:
             self.current_bullet.append(self.current_styledtext)
 
     def _convert_box_heading(self, data: Data):
-        return
+        segment = StyledTextSegment(f"{data.text}&#13;&#13;", bold=True)
+
+        if self.current_table is not None:
+            self._reset_paragraph_conversion_state()
+            self.current_story.text.append(FormattedParagraph(None))
+
+        self.lstrip_next_line = True
+
         if self.current_box is not None:
-            # Already in a box? ok
-            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-            self.current_box.rows[0].columns[0].append(box_heading)
+            self.current_box_text.append(segment)
         else:
-            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-            row = FormattedTableRow([box_heading])
-            self.current_box = FormattedTable([row])
+            self.current_box_text = StyledText([segment])
+            row = FormattedTableRow()
+            row.append(self.current_box_text)
+            self.current_box = FormattedTable()
+            self.current_box.append(row)
             self.current_story.text.append(self.current_box)
+
+    def _convert_box_text(self, data: Data):
+        if self.current_box is None:
+            # TODO: we will assume this is actually a box_quote
+            return
+
+        # a single period or comma at the start of a span, regardless of it's style,
+        # should just be added to the previous segment. because it leads to weard spaces.
+        if (
+            len(data.text) > 1
+            and (data.text.startswith(". ") or data.text.startswith(", "))
+            and self.current_box_text is not None
+        ):
+            if len(data.text) == 2:
+                self.current_box_text.last_segment().append(data.text)
+                return
+
+            self.current_box_text.last_segment().append(data.text[0:1])
+
+            # remove those first two characters
+            data.text = data.text[2:]
+
+        # if the text is slightly indented from the previous data then it's probably a
+        # new paragraph in the box.
+
+        if (
+            data.origin.x > self.previous_data.origin.x + 2
+            and data.origin.x < self.previous_data.origin.x + 20
+        ):
+            data.text = "&#13;&#13;" + data.text
+            self.lstrip_next_line = True
+
+        if self.lstrip_next_line:
+            data.text = data.text.lstrip()
+            self.lstrip_next_line = False
+
+        segment = segment_from_data(data)
+        self.current_box_text.append(segment)
 
     def _convert_table_title(self, data: Data):
         self._reset_paragraph_conversion_state()

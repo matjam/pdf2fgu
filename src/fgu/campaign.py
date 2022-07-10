@@ -101,3 +101,14 @@ class Campaign:
         ET.indent(self.tree, space="\t")
         with open(f"{self.path}/db.xml", "wb") as output:
             self.tree.write(output, encoding="utf-8", xml_declaration=True)
+
+        # stupid hack to work around idiocy in the python etree implementation. Or
+        # maybe it's idiocy in Fantasy Grounds? I don't care. It's idiocy because
+        # it's XML. XML is stupid.
+        with open(f"{self.path}/db.xml", "r", encoding="utf-8") as reader:
+            xml_data = reader.read()
+
+        xml_data = xml_data.replace("&amp;#13;", "&#13;")
+
+        with open(f"{self.path}/db.xml", "w", encoding="utf-8") as writer:
+            writer.write(xml_data)
