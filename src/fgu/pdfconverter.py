@@ -14,7 +14,9 @@ from dataclass_wizard import JSONWizard
 
 from fgu.formattedtext import (
     FormattedHeading,
+    FormattedList,
     FormattedParagraph,
+    FormattedTable,
     FormattedTableRow,
     FormattedText,
     StyledText,
@@ -101,6 +103,17 @@ class Data(JSONWizard):
     location: LocationData
 
 
+def segment_from_data(data: Data) -> StyledTextSegment:
+    bold = False
+    italic = False
+    if "bold" in data.style:
+        bold = True
+    if "italic" in data.style:
+        italic = True
+    segment = StyledTextSegment(data.text, bold=bold, italic=italic)
+    return segment
+
+
 class PageData:
     """
     Contains all of the data for a PDF and the methods we use to do the actual
@@ -115,13 +128,13 @@ class PageData:
         self.data = []  # type:List[Data]
         self.output = None  # output file when parsing
         self.stop_parsing = False
-        self.current_page_span = 0
+        self._current_page_span = 0
         self.page_bullshit_start = True  # hee hee
 
-        self.page_num = 0
-        self.block_num = 0
-        self.line_num = 0
-        self.span_num = 0
+        self._page_num = 0
+        self._block_num = 0
+        self._line_num = 0
+        self._span_num = 0
 
         # conversion state
         self.sections = [0, 0, 0]
@@ -130,12 +143,18 @@ class PageData:
         self.current_heading_3 = None
         self.current_styledtext = None
         self.current_box = None
-        self.paragraph = None
+        self.current_box_text = None  # type: StyledText
+        self.current_paragraph = None
         self.current_story = None
+        self.current_bullet = None
+        self.current_bullet_x = None
+        self.current_table = None
+        self.current_table_row = None
+        self.current_table_heading_count = 0
 
         # build our dictionaries for searching styles
         self.config = _load_config()
-        self.module_config = _config_for_module(file.split("_")[0], self.config)
+        self.module_config = _style_config_for_module(file.split("_")[0], self.config)
 
         # parse out all the styles and store them for the parsing stage
         self.styles = {}
@@ -148,6 +167,21 @@ class PageData:
                     f"warning: could not find '{style_name}' using"
                     f" '{self.module_config[style_name]}' in {file}. This is"
                     " probably ok."
+                )
+
+        self._origins = {}
+        self._position_config = _position_config_for_module(
+            file.split("_")[0], self.config
+        )
+
+        for origin_name in self._position_config:
+            self._origins[origin_name] = self.find_origin_for_text(
+                self._position_config[origin_name]
+            )
+            if not self._origins[origin_name]:
+                print(
+                    f"ERROR: could not find '{origin_name}' using"
+                    f" in {file}. This is probably not ok."
                 )
 
         # make a dict we can use to look up the style_name from the style.
@@ -176,16 +210,21 @@ class PageData:
 
         self.data.append(data)
         # could use JSON but this results in a tighter output
-        print(
-            f"{self.page_num} {style}"
-            + f" style=[{style_data.font} {style_data.size} {style_data.color} {style_data.flags}]"
-            + f" origin=[{origin.x},{origin.y}] '{text}'",
-            file=self.output,
-        )
+        # print(
+        #     f"{data.location.page} {style}"
+        #     + f" style=[{data.style_data.font} {data.style_data.size}"
+        #     + f" {data.style_data.color} {data.style_data.flags}]"
+        #     + f" origin=[{data.origin.x},{data.origin.y}] '{data.text}'",
+        #     file=self.output,
+        # )
+        print(data.to_json(), file=self.output)
 
     def find_style_for_text(self, text):
         """
         Inefficient search for a given string in the text to return it's style.
+
+        Usually not so bad because we usually find most things close to
+        the top.
         """
         for page in self.pages[1:]:
             for block in page["blocks"]:
@@ -194,8 +233,28 @@ class PageData:
                         style = (
                             f"{span['font']} {span['size']} {span['flags']} {span['color']}"
                         )
+
                         if text in span["text"].strip().lstrip():
                             return style
+        return None
+
+    def find_origin_for_text(self, text) -> OriginData:
+        """
+        Inefficient search for a given string in the text to return it's data.
+
+        Usually not so bad because we usually find most things close to
+        the top.
+        """
+        for page in self.pages:
+            for block in page["blocks"]:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        if text in span["text"].strip().lstrip():
+                            origin = OriginData(
+                                int(span["origin"][0]), int(span["origin"][1])
+                            )
+                            return origin
+
         return None
 
     def parse(self):
@@ -203,13 +262,13 @@ class PageData:
         runs the parsing logic which will construct the internal structures for
         all Stories.
         """
-        with open(f"txt/{self.module_name}.txt", "w", encoding="utf-8") as self.output:
+        with open(f"txt/{self.module_name}.json", "w", encoding="utf-8") as self.output:
             # theoretically we now have all the style information we need. Now we
             # just iterate over the text and extract all the structure we need.
-            for self.page_num, page in enumerate(self.pages):
-                for self.block_num, block in enumerate(page["blocks"]):
-                    for self.line_num, line in enumerate(block["lines"]):
-                        for self.span_num, span in enumerate(line["spans"]):
+            for self._page_num, page in enumerate(self.pages):
+                for self._block_num, block in enumerate(page["blocks"]):
+                    for self._line_num, line in enumerate(block["lines"]):
+                        for self._span_num, span in enumerate(line["spans"]):
                             self._parse_span(span)
                             if self.stop_parsing:
                                 return
@@ -228,13 +287,13 @@ class PageData:
 
         skip_span = False
         really_skip = False
-        # if self.page_num != 1 and self.current_page_span == 0:
+        # if self._page_num != 1 and self._current_page_span == 0:
         #     skip_span = True
 
         # we could be in the bullshit part of the page at the start which we need to skip.
         # this strategy is basically just keep skipping til we find a span that is both
         # a recognized style AND it has some meaningful content. ' ' and '.' does not count.
-        if self.page_bullshit_start and self.page_num != 0:
+        if self.page_bullshit_start and self._page_num != 0:
             if len(text.lstrip().strip()) == 0:
                 # bullshit, skip
                 skip_span = True
@@ -250,12 +309,12 @@ class PageData:
                 really_skip = True
 
         if really_skip or (
-            skip_span and self.page_num != 0
+            skip_span and self._page_num != 0
         ):  # we don't handle skipping on the title page unless we really mean it
-            self.current_page_span = self.current_page_span + 1
+            self._current_page_span = self._current_page_span + 1
             return
 
-        if self.page_num == 0:
+        if self._page_num == 0:
             # we run different logic for the title page; the fonts used on this page are usually
             # completely different to the rest of the document. We don't try to figure out the
             # styles here; we just make everything "body" and then look at the font names
@@ -282,9 +341,11 @@ class PageData:
             style_name,
             style_data,
             OriginData(int(span["origin"][0]), int(span["origin"][1])),
-            LocationData(self.page_num, self.block_num, self.line_num, self.span_num),
+            LocationData(
+                self._page_num, self._block_num, self._line_num, self._span_num
+            ),
         )
-        self.current_page_span = self.current_page_span + 1
+        self._current_page_span = self._current_page_span + 1
 
     def _section_text(self):
         """
@@ -311,6 +372,12 @@ class PageData:
         self._increment_section(level)
         return Story(f"{self._section_text()} {name}", text=FormattedText())
 
+    def _line_path(self, data: Data) -> str:
+        return f"{data.location.page}.{data.location.block}.{data.location.line}"
+
+    def _block_path(self, data: Data) -> str:
+        return f"{data.location.page}.{data.location.block}"
+
     def convert(self, campaign_path: str, campaign_name):
         """
         performs all conversion on the parsed data and outputs the campaign.
@@ -321,7 +388,7 @@ class PageData:
         self.current_heading_3 = None  # type:FormattedHeading
         self.current_styledtext = None  # type:StyledText
         self.current_box = None  # type:FormattedTableRow
-        self.paragraph = None
+        self.current_paragraph = None
 
         self.current_story = Story(f"00 ({campaign_name})", text=FormattedText())
         self.encounters.append_story(self.current_story)
@@ -335,17 +402,48 @@ class PageData:
             "body_italic": self._convert_body,
             "body_bold_italic": self._convert_body,
             "box_heading": self._convert_box_heading,
+            "bullet": self._convert_bullet,
+            "table_title": self._convert_table_title,
+            "table_heading": self._convert_table_heading,
+            "table_text": self._convert_table_text,
+            "table_text_italic": self._convert_table_text,
         }
 
         for data in self.data:
             if data.style in handlers:
+                self._page_num = data.location.page
+                self._block_num = data.location.block
+                self._line_num = data.location.block
+                self._span_num = data.location.span
                 handlers[data.style](data)
 
-            # just in case we need it to make decisions for the next loop
-            self.previous_data = data
+                # just in case we need it to make decisions for the next loop
+                self.previous_data = data
 
         campaign = Campaign(campaign_path, self.encounters)
+        campaign.create()
         campaign.build()
+
+    def _reset_all_conversion_state(self):
+        self.current_styledtext = None
+        self.current_box = None
+        self.current_paragraph = None
+        self.current_story = None
+        self.current_bullet = None
+        self.current_bullet_x = None
+        self.current_table = None
+        self.current_table_row = None
+        self.current_table_heading_count = 0
+
+    def _reset_paragraph_conversion_state(self):
+        self.current_styledtext = None
+        self.current_box = None
+        self.current_paragraph = None
+        self.current_bullet = None
+        self.current_bullet_x = None
+        self.current_table = None
+        self.current_table_row = None
+        self.current_table_heading_count = 0
 
     def _convert_heading_1(self, data: Data):
         if (
@@ -357,9 +455,10 @@ class PageData:
             # this is why we do all this shit in memory rather than trying to construct
             # the XML in one pass. SMRT SMART
             self.current_story.name = self.current_story.name + data.text
+            self.current_bullet = None
             return
 
-        self.paragraph = None
+        self._reset_all_conversion_state()
         self.current_story = self._new_story(data.text, 0)
         self.encounters.append_story(self.current_story)
 
@@ -373,7 +472,7 @@ class PageData:
             self.current_story.name = self.current_story.name + data.text
             return
 
-        self.paragraph = None
+        self._reset_all_conversion_state()
         self.current_story = self._new_story(data.text, 1)
         self.encounters.append_story(self.current_story)
 
@@ -387,19 +486,64 @@ class PageData:
             self.current_heading_3.text = self.current_heading_3.text + data.text
             return
 
-        self.paragraph = None
+        self._reset_paragraph_conversion_state()
         self.current_heading_3 = FormattedHeading(data.text)
         self.current_story.text.append(self.current_heading_3)
 
     def _convert_body(self, data: Data):
-        bold = False
-        italic = False
-        if "bold" in data.style:
-            bold = True
-        if "italic" in data.style:
-            italic = True
+        # a single period or comma at the start of a span, regardless of it's style,
+        # should just be added to the previous segment. because it leads to weard spaces.
+        if (
+            len(data.text) > 1
+            and (data.text.startswith(". ") or data.text.startswith(", "))
+            and self.current_styledtext is not None
+        ):
+            if len(data.text) == 2:
+                self.current_styledtext.last_segment().append(data.text)
+                return
 
-        segment = StyledTextSegment(data.text, bold=bold, italic=italic)
+            self.current_styledtext.last_segment().append(data.text[0:1])
+
+            # remove those first two characters
+            data.text = data.text[2:]
+
+        # create a segment out of the body we get. We'll use it.
+        segment = segment_from_data(data)
+
+        # if we're building bullets text and the next span we get is further to the left than
+        # the first data we saw after starting a bullet then it's a good bet we're done with
+        # building bullets.
+
+        if self.current_bullet_x is not None and self.current_bullet_x > data.origin.x:
+            self._reset_paragraph_conversion_state()
+            self.current_styledtext = StyledText([segment])
+            self.current_paragraph = FormattedParagraph(self.current_styledtext)
+            self.current_story.text.append(self.current_paragraph)
+            return
+
+        # OK but what if it wraps and then starts a new paragraph instead of continuing the
+        # bullets? Then the next best thing we can do is check to see if it is aligned to
+        # what we think is the left and right margins.
+
+        if self.current_bullet_x is not None and (
+            data.origin.x == self._origins["left_column_margin"].x
+            or data.origin.x == self._origins["right_column_margin"].x
+        ):
+            self._reset_paragraph_conversion_state()
+            self.current_styledtext = StyledText([segment])
+            self.current_paragraph = FormattedParagraph(self.current_styledtext)
+            self.current_story.text.append(self.current_paragraph)
+            return
+
+        # check to see if this is the first text added to a bullet
+
+        if self.current_bullet is not None and self.current_bullet.length() == 0:
+            # it is so we need to handle that.
+            self.current_bullet_x = data.origin.x
+
+        # if our previous span was also a body and we have a styledtext to add to it, we do
+        # that.
+
         if (
             self.previous_data is not None
             and "body" in self.previous_data.style
@@ -407,36 +551,107 @@ class PageData:
         ):
             # we probably add this to the current styledtext block, but we need to check if it
             # might be a new paragraph
-            if self.current_styledtext.last_segment().strip().endswith(
-                "."
+            if (
+                self.current_styledtext.last_segment().text().strip().endswith(".")
+                or self.current_styledtext.last_segment().text().strip().endswith(":")
             ) and data.text.startswith(" "):
                 # probably a good bet it's a new paragraph. Not sure what else to go on.
+                self._reset_paragraph_conversion_state()
                 self.current_styledtext = StyledText([segment])
-                self.paragraph = FormattedParagraph(self.current_styledtext)
-                self.current_story.text.append(self.paragraph)
+                self.current_paragraph = FormattedParagraph(self.current_styledtext)
+                self.current_story.text.append(self.current_paragraph)
                 return
 
             self.current_styledtext.append(segment)
             return
 
+        # handle bullet
+        if self.current_bullet is not None:
+            self.current_styledtext.append(segment)
+            return
+
         self.current_styledtext = StyledText([segment])
-        if self.paragraph is None:
-            self.paragraph = FormattedParagraph(self.current_styledtext)
-            self.current_story.text.append(self.paragraph)
+        if self.current_paragraph is None:
+            self.current_paragraph = FormattedParagraph(self.current_styledtext)
+            self.current_story.text.append(self.current_paragraph)
         else:
-            self.paragraph.text.append(self.current_styledtext)
+            self.current_paragraph.append(segment)
+
+    def _convert_bullet(self, data):  # pylint: disable=unused-argument
+        self.current_paragraph = None
+        if self.current_bullet is None:
+            self._reset_paragraph_conversion_state()  # we don't know the x-value of the text yet
+            self.current_styledtext = StyledText([])
+            self.current_bullet = FormattedList([self.current_styledtext])
+            self.current_story.text.append(self.current_bullet)
+        else:
+            # each new bullet gets a new styledtext.
+            self.current_styledtext = StyledText([])
+            self.current_bullet.append(self.current_styledtext)
 
     def _convert_box_heading(self, data: Data):
-        pass
-        # if self.current_box is not None:
-        #     # Already in a box? ok
-        #     box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-        #     self.current_box.rows[0].columns[0].append(box_heading)
-        # else:
-        #     box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
-        #     row = FormattedTableRow([box_heading])
-        #     self.current_box = FormattedTable([row])
-        #     self.current_story.text.append(self.current_box)
+        return
+        if self.current_box is not None:
+            # Already in a box? ok
+            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+            self.current_box.rows[0].columns[0].append(box_heading)
+        else:
+            box_heading = StyledTextSegment(f"{data.text}\n\n", bold=True)
+            row = FormattedTableRow([box_heading])
+            self.current_box = FormattedTable([row])
+            self.current_story.text.append(self.current_box)
+
+    def _convert_table_title(self, data: Data):
+        self._reset_paragraph_conversion_state()
+        segment = StyledTextSegment(data.text, bold=True)
+        self.current_styledtext = StyledText([segment])
+
+        # Add the text as a kind of heading... wish FGU had <h2>
+        paragraph = FormattedParagraph(self.current_styledtext)
+        self.current_story.text.append(paragraph)
+
+        # make a table.
+        self.current_table = FormattedTable()
+        self.current_story.text.append(self.current_table)
+
+    def _convert_table_heading(self, data: Data):
+        if self.current_table is None:
+            self.current_table = FormattedTable()
+            self.current_story.text.append(self.current_table)
+
+        if self.current_table_row is None:
+            self.current_table_row = FormattedTableRow()
+            self.current_table.append(self.current_table_row)
+
+        self.current_table_heading_count = self.current_table_heading_count + 1
+        self.current_table_row.append(
+            StyledText([StyledTextSegment(data.text, bold=True)])
+        )
+
+    def _convert_table_text(self, data: Data):
+        if self.current_table_heading_count == 0:
+            # tables without headings make no sense yet.
+            return
+
+        if self.current_table is None:
+            self.current_table = FormattedTable()
+            self.current_story.text.append(self.current_table)
+
+        if self.current_table_row is None:
+            self.current_table_row = FormattedTableRow()
+            self.current_table.append(self.current_table_row)
+
+        if self.current_table_row.count() >= self.current_table_heading_count:
+            self.current_table_row = FormattedTableRow()
+            self.current_table.append(self.current_table_row)
+
+        italic = False
+        if "italic" in data.style:
+            italic = True
+
+        segment = StyledTextSegment(data.text, italic=italic)
+        self.current_styledtext = StyledText([segment])
+        self.current_table_row.append(self.current_styledtext)
 
 
 def _load_config():
@@ -445,12 +660,20 @@ def _load_config():
     return json.loads(data)
 
 
-def _config_for_module(code, config):
+def _style_config_for_module(code, config):
     module_config = config["patterns"]["base"]
     if code in config["patterns"]["overrides"]:
         for style in config["patterns"]["overrides"][code]:
             module_config[style] = config["patterns"]["overrides"][code][style]
     return module_config
+
+
+def _position_config_for_module(code, config):
+    position_config = config["patterns"]["positions"]
+    if code in config["patterns"]["positions_overrides"]:
+        for position in config["patterns"]["positions_overrides"][code]:
+            position_config[position] = config["patterns"]["overrides"][code][position]
+    return position_config
 
 
 def analyze(path: str, file: str) -> PageData:

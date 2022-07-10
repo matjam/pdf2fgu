@@ -19,6 +19,12 @@
             "box_text": "A character possessing the acolyte background",
             "bullet": "\uf0b7"
         },
+        "positions": {
+            "left_column_margin": "This adventure is official for D&D Adventurers",
+            "left_column_indent": "If you’re running this adventure as a part of",
+            "right_column_margin": "or lower than the level range of a",
+            "right_column_indent": "For more information on playing,"
+        },
         "char_override": {
             "\uf0b7": "bullet",
             "\u2022": "bullet",
@@ -33,8 +39,28 @@
             },
             "DDAL04-13": {
                 "frame_body": "It was sheer luck that had your party stumbling across the"
+            },
+            "DDAL08-07": {
+                "heading_1": "Adventure Primer",
+                "heading_2": "Scene A. False Pretenses",
+                "heading_3": "Episode Sequence",
+                "table_title": "Determining Party Strength",
+                "table_heading": "Party Composition Party",
+                "table_text": "5 characters, APL less than",
+                "table_text_italic": "Cure wounds (1st level)",
+                "body": "but the Baron also recognizes through multitasking, he",
+                "body_bold": "advancement and treasure checkpoints",
+                "body_italic": "The evil that men do lives after them; the good is oft",
+                "body_bold_italic": "Estimated Duration:",
+                "box_heading": "Blue Lichen (Bonus Objective A)",
+                "box_text_bold": "Limn “Bluetooth” Korgin",
+                "box_text_italic": "Sanguine Chronicles Book One: Sweet Death",
+                "box_text_bold_italic": "Quote:",
+                "box_text": "If the characters don’t learn of",
+                "bullet": "•"
             }
-        }
+        },
+        "positions_overrides": {}
     },
     "page_span_skip": 2,
     "never_allow_strings": [

@@ -8,13 +8,14 @@
     "python.formatting.blackArgs": [
         "--experimental-string-processing"
     ],
-    "python.formatting.blackPath": "venv/bin/black",
+    "python.formatting.blackPath": "black",
+    "editor.formatOnSave": true,
     "emeraldwalk.runonsave": {
         "commands": [
             {
                 "match": ".py",
-                "cmd": "venv/bin/docformatter --make-summary-multi-line --pre-summary-newline --force-wrap -i ${file}"
+                "cmd": "${workspaceRoot}/venv/Scripts/docformatter.exe --make-summary-multi-line --pre-summary-newline --force-wrap -i ${file}"
             }
         ]
-    }
+    },
 }
