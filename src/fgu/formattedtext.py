@@ -66,7 +66,7 @@ class StyledTextSegment(FormattedTextObject):
     def length(self) -> int:
         return len(self._text)
 
-    def append(self, obj: str):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, str):
             raise TypeError("must provide a str to append()")
         self._text = self._text + obj
@@ -102,7 +102,7 @@ class StyledText(FormattedTextObject):
             total_length = total_length + text.length()
         return total_length
 
-    def append(self, obj: StyledTextSegment):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
 
@@ -132,7 +132,7 @@ class FormattedList(FormattedTextObject):
             total_length = total_length + item.length()
         return total_length
 
-    def append(self, obj: StyledText):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledText):
             raise TypeError("must provide a StyledText to append()")
         self._items.append(obj)
@@ -155,12 +155,9 @@ class FormattedParagraph(FormattedTextObject):
         builder.end("p")
 
     def length(self) -> int:
-        total_length = 0
-        for text in self._text:
-            total_length = total_length + text.length()
-        return total_length
+        return self._text.length()
 
-    def append(self, obj: StyledTextSegment):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
         self._text.append(obj)
@@ -182,12 +179,9 @@ class FormattedFrame(FormattedTextObject):
         builder.end("frame")
 
     def length(self) -> int:
-        total_length = 0
-        for text in self._text:
-            total_length = total_length + text.length()
-        return total_length
+        return len(self._text)
 
-    def append(self, obj: str):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, str):
             raise TypeError("must provide a str to append()")
 
@@ -222,7 +216,7 @@ class FormattedTableRow(FormattedTextObject):
         """
         return len(self._columns)
 
-    def append(self, obj: StyledText):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledText):
             raise TypeError("must provide a StyledText to append()")
         self._columns.append(obj)
@@ -248,7 +242,7 @@ class FormattedTable(FormattedTextObject):
             total_length = total_length + row.length()
         return total_length
 
-    def append(self, obj: FormattedTableRow):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, FormattedTableRow):
             raise TypeError("must provide a FormattedTableRow to append()")
         self._rows.append(obj)
@@ -260,22 +254,22 @@ class FormattedLink(FormattedTextObject):
     """
 
     def __init__(self, text: StyledText, *, cls: str = "", recordname: str = ""):
-        self.text = text
-        self.cls = cls
-        self.recordname = recordname
+        self._text = text
+        self._cls = cls
+        self._recordname = recordname
 
     def build(self, builder: ET.TreeBuilder):
-        builder.start("link", {"class": self.cls, "recordname": self.recordname})
-        builder.data(self.text)
+        builder.start("link", {"class": self._cls, "recordname": self._recordname})
+        self._text.build(builder)
         builder.end("link")
 
     def length(self) -> int:
-        return len(self.text)
+        return self._text.length()
 
-    def append(self, obj: StyledTextSegment):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
-        self.text.append(obj)
+        self._text.append(obj)
 
 
 class FormattedLinkList(FormattedTextObject):
@@ -298,7 +292,7 @@ class FormattedLinkList(FormattedTextObject):
             total_length = total_length + link.length()
         return total_length
 
-    def append(self, obj: FormattedLink):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, FormattedLink):
             raise TypeError("must provide a FormattedLink to append()")
 
@@ -319,7 +313,7 @@ class FormattedHeading(FormattedTextObject):
     def length(self) -> int:
         return len(self.text)
 
-    def append(self, obj: str):
+    def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, str):
             raise TypeError("must provide a str to append()")
         self.text = self.text + obj

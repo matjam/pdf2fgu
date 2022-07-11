@@ -1,0 +1,119 @@
+{
+    "stylePatterns": {
+        "characterOverride": {
+            "\uf0b7": "bullet",
+            "\u2022": "bullet",
+            "\u0020": "body"
+        },
+        "seasons": {
+            "DDAL04": {
+                "styles": {
+                    "heading_1": "Adjusting the Adventure",
+                    "heading_2": "Downtime and Lifestyle",
+                    "heading_3": "Disease, Poison, and Other Debilitating",
+                    "table_title": "Determining Party Strength",
+                    "table_heading": "Party Composition Party",
+                    "table_text": "5 characters, APL less than",
+                    "table_text_italic": "Cure wounds (1st level)",
+                    "body": "This adventure is official for D&D Adventurers",
+                    "body_bold": "Make decisions and adjudications that enhance",
+                    "body_italic": "D&D Basic Rules",
+                    "body_bold_italic": "Faction Charity.",
+                    "box_heading": "Help From Who!?",
+                    "box_text_bold": "one spell per day",
+                    "box_text_italic": "Adventurers League Dungeon",
+                    "box_text_bold_italic": "Quote:",
+                    "box_text": "A character possessing the acolyte background",
+                    "frame_body": "MUST_OVERRIDE",
+                    "bullet": "\uf0b7"
+                },
+                "stylesOverride": {
+                    "DDAL04-01": {
+                        "frame_body": "Your instructions were clear"
+                    },
+                    "DDAL04-02": {
+                        "frame_body": "Thick grey clouds gather far to the east and north, around",
+                        "box_text_bold_italic": "Regeneration:"
+                    },
+                    "DDAL04-03": {
+                        "frame_body": "A heavy shroud of snow has blanketed the village of Orașnou",
+                        "box_text_bold_italic": "Fillar the Wereraven.",
+                        "bullet": "•"
+                    },
+                    "DDAL04-04": {
+                        "frame_body": "The storm outside has intensified and made it foolish to leave"
+                    },
+                    "DDAL04-05": {
+                        "frame_body": "Snow blankets the deep forest. Although you have been"
+                    },
+                    "DDAL04-06": {
+                        "frame_body": "The path before you is clear, and the boughs of the trees are"
+                    },
+                    "DDAL04-07": {
+                        "frame_body": "A flash of lightning reveals a tall statue of a cloaked and"
+                    },
+                    "DDAL04-08": {
+                        "frame_body": "The sheep's pen is just a wide wooden hut within a few"
+                    },
+                    "DDAL04-09": {
+                        "frame_body": "What a night! All of the food, drink, and dancing has left you"
+                    },
+                    "DDAL04-10": {
+                        "frame_body": "Just as the Burgomaster promised, you climb the snowy rise",
+                        "box_text_italic": "wand of binding",
+                        "box_text_bold_italic": "They fight a ghost."
+                    },
+                    "DDAL04-11": {
+                        "frame_body": "Typically peaceful Orașnou seems to be on the brink of chaos."
+                    },
+                    "DDAL04-12": {
+                        "frame_body": "A rough camp has been set up, the men standing on either",
+                        "box_text_bold_italic": "A Find Feathered"
+                    },
+                    "DDAL04-13": {
+                        "frame_body": "The trip back through the Vanishing Hills was not"
+                    },
+                    "DDAL04-14": {
+                        "frame_body": "The winter wind blows viciously; shaking the walls and",
+                        "box_text_bold_italic": "Quote:"
+                    }
+                },
+                "positions": {
+                    "left_column_margin": "This adventure is official for D&D Adventurers",
+                    "left_column_indent": "If you’re running this adventure as a part of",
+                    "right_column_margin": "or lower than the level range of a",
+                    "right_column_indent": "For more information on playing,"
+                },
+                "positionsOverride": {}
+            },
+            "DDAL08": {
+                "styles": {
+                    "heading_1": "Adventure Primer",
+                    "heading_2": "Scene A. False Pretenses",
+                    "heading_3": "Episode Sequence",
+                    "table_title": "Determining Party Strength",
+                    "table_heading": "Party Composition Party",
+                    "table_text": "5 characters, APL less than",
+                    "table_text_italic": "Cure wounds (1st level)",
+                    "body": "but the Baron also recognizes through multitasking, he",
+                    "body_bold": "advancement and treasure checkpoints",
+                    "body_italic": "The evil that men do lives after them; the good is oft",
+                    "body_bold_italic": "Estimated Duration:",
+                    "box_heading": "Blue Lichen (Bonus Objective A)",
+                    "box_text_bold": "Limn “Bluetooth” Korgin",
+                    "box_text_italic": "Sanguine Chronicles Book One: Sweet Death",
+                    "box_text_bold_italic": "Quote:",
+                    "box_text": "If the characters don’t learn of",
+                    "bullet": "•"
+                },
+                "stylesOverride": {},
+                "positions": {},
+                "positionsOverride": {}
+            }
+        }
+    },
+    "skipStrings": [
+        "(Order #",
+        "Not for resale"
+    ]
+}

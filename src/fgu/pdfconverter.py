@@ -1,8 +1,8 @@
 """
 Core logic for the conversion of AL PDFs into FGU campaigns.
 
-if I was to rewrite this I would use a generator and use recursive
-functions to represent the parser state.
+if I was to rewrite this I use recursive functions to represent the
+parser state.
 """
 
 from __future__ import annotations
@@ -113,9 +113,9 @@ def segment_from_data(data: Data) -> StyledTextSegment:
     """
     bold = False
     italic = False
-    if "bold" in data.style:
+    if "bold" in data.style.value:
         bold = True
-    if "italic" in data.style:
+    if "italic" in data.style.value:
         italic = True
     segment = StyledTextSegment(data.text, bold=bold, italic=italic)
     return segment
@@ -145,10 +145,10 @@ class PageData:
 
         # conversion state
         self.sections = [0, 0, 0]
-        self.encounters = None
-        self.previous_data = None  # type:Data
-        self.current_heading_3 = None
-        self.current_styledtext = None
+        self.encounters = None  # type:Encounter | None
+        self.previous_data = None  # type:Data|None
+        self.current_heading_3 = None  # type:StyledText|None
+        self.current_styledtext = None  # type:StyledText|None
         self.current_box = None
         self.current_box_text = None  # type: StyledText
         self.current_paragraph = None
@@ -217,14 +217,6 @@ class PageData:
         )
 
         self.data.append(data)
-        # could use JSON but this results in a tighter output
-        # print(
-        #     f"{data.location.page} {style}"
-        #     + f" style=[{data.style_data.font} {data.style_data.size}"
-        #     + f" {data.style_data.color} {data.style_data.flags}]"
-        #     + f" origin=[{data.origin.x},{data.origin.y}] '{data.text}'",
-        #     file=self.output,
-        # )
         print(data.to_json(), file=self.output)
 
     def find_style_for_text(self, text):
@@ -246,7 +238,7 @@ class PageData:
                             return style
         return None
 
-    def find_origin_for_text(self, text) -> OriginData:
+    def find_origin_for_text(self, text) -> OriginData | None:
         """
         Inefficient search for a given string in the text to return it's data.
 
