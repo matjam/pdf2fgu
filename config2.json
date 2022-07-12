@@ -115,5 +115,8 @@
     "skipStrings": [
         "(Order #",
         "Not for resale"
-    ]
+    ],
+    "replaceCharacters": {
+        "\u2010": "-"
+    }
 }

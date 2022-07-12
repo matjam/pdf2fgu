@@ -28,7 +28,7 @@ def cli(pdf_path, fgu_path):
         module_name = file.removesuffix(".pdf").replace("_", " ")
 
         logger.info(f"converting file [{file}] campaign [{module_name}] ...")
-        pdf_converter = PDFConverter(pdf_path, file, module_name)
+        pdf_converter = PDFConverter(pdf_path, file, module_name, fgu_path)
         pdf_converter.convert()
 
 

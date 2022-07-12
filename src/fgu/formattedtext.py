@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 
 
 class FormattedTextObject(ABC):
@@ -77,14 +77,22 @@ class StyledTextSegment(FormattedTextObject):
         """
         return self._text
 
+    def is_bold(self) -> bool:
+        return self._bold
+
+    def is_italic(self) -> bool:
+        return self._italic
+
 
 class StyledText(FormattedTextObject):
     """
     StyledText contains multiple StyledTextSegments.
     """
 
-    def __init__(self, data: List[StyledTextSegment]):
-        self._data = data
+    def __init__(self, segment: StyledTextSegment | None = None):
+        self._data = []  # type: List[StyledTextSegment]
+        if segment is not None:
+            self.append(segment)
 
     def build(self, builder: ET.TreeBuilder):
         for text in self._data:

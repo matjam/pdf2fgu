@@ -24,18 +24,6 @@ class Story:
 
     _currentID = 1
 
-    _partyStrengthTable = [
-        ["3-4 characters, APL less than", "Very weak"],
-        ["3-4 characters, APL equivalent", "Weak"],
-        ["3-4 characters, APL greater than", "Average"],
-        ["5 characters, APL less than", "Weak"],
-        ["5 characters, APL equivalent", "Average"],
-        ["5 characters, APL greater than", "Strong"],
-        ["6-7 characters, APL less than", "Average"],
-        ["6-7 characters, APL equivalent", "Strong"],
-        ["6-7 characters, APL greater than", "Very strong"],
-    ]
-
     def __init__(self, name, *, locked=False, text: FormattedText):
         self.id = Story._currentID
         Story._currentID = Story._currentID + 1

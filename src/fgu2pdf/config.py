@@ -52,6 +52,7 @@ class StylePatterns:
 class Config(JSONSerializable):
     style_patterns: StylePatterns
     skip_strings: List[str]
+    replace_characters: Dict[str, str]
 
     class Meta(JSONSerializable.Meta):
         key_transform_with_load = LetterCase.SNAKE

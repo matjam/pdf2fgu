@@ -30,6 +30,8 @@ class StyleInfo:
     size: float
     flags: int
     color: str
+    bold: bool
+    italic: bool
 
 
 @dataclass

@@ -1,7 +1,7 @@
 """
 Core logic for the conversion of AL PDFs into FGU campaigns.
 """
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Tuple
 
 import fitz
 
@@ -24,9 +24,11 @@ from fgu.formattedtext import (
 
 
 class PDFConverter:
-    def __init__(self, pdf_path: str, module_file: str, module_name: str):
+    def __init__(
+        self, pdf_path: str, module_file: str, module_name: str, fgu_path: str
+    ):
         self._pdf_path = pdf_path
-        self._campaign_path = ""
+        self._campaign_path = f"{fgu_path}/campaigns/pdf2fgu - {module_name}"
         self._module_file = module_file
         self._module_code = module_file.split("_")[0]
         self._module_name = module_name
@@ -40,8 +42,9 @@ class PDFConverter:
 
         # contains all preprocessed rows of data.
         self._data = []  # type: List[data.Row]
-        self._data_row = None  # type None|Generator[data.Row, None, None]
+        self._data_row = self._parsed_spans()
         self._current_row = None  # type None|data.Row
+        self._current_row_idx = 0
 
         # does a first pass, finding in the PDF all the styles and processing
         # it into the _data property.
@@ -88,9 +91,9 @@ class PDFConverter:
 
         self._data_row = self._parsed_spans()
         encounters = self._parse_encounter()
-        # campaign = Campaign(self._campaign_path, encounters)
-        # campaign.create()
-        # campaign.build()
+        campaign = Campaign(self._campaign_path, encounters)
+        campaign.create()
+        campaign.build()
 
     def add_parsed_span(
         self,
@@ -118,15 +121,16 @@ class PDFConverter:
         """
         generator that yields spans from the PDF page data.
         """
-        location = data.Location(0, 0, 0, 0)
-
         # theoretically we now have all the style information we need. Now we
         # just iterate over the text and extract all the structures.
-        for location.page, page in enumerate(self._pages):
-            for location.block, block in enumerate(page["blocks"]):
-                for location.line, line in enumerate(block["lines"]):
-                    for location.span, span in enumerate(line["spans"]):
-                        yield (span, location)
+        for page_num, page in enumerate(self._pages):
+            for block_num, block in enumerate(page["blocks"]):
+                for line_num, line in enumerate(block["lines"]):
+                    for span_num, span in enumerate(line["spans"]):
+                        yield (
+                            span,
+                            data.Location(page_num, block_num, line_num, span_num),
+                        )
 
     def _style_string_from_span(self, span) -> str:
         return f"{span['font']} {span['size']} {span['flags']} {span['color']}".lower()
@@ -163,12 +167,22 @@ class PDFConverter:
             style_string = self._style_string_from_span(span)
 
             style_data = data.StyleInfo(
-                span["font"], span["size"], span["flags"], span["color"]
+                span["font"],
+                span["size"],
+                span["flags"],
+                span["color"],
+                "bold" in span["font"].lower(),
+                "italic" in span["font"].lower(),
             )
 
             origin = (data.Origin(int(span["origin"][0]), int(span["origin"][1])),)
 
             text = span["text"]  # type: str
+
+            # Replace characters we find with more sensible ones.
+            for old, new in self._config.replace_characters.items():
+                if old in text:
+                    text = text.replace(old, new)
 
             # check if we flipped to another page
             if previous_page != location.page:
@@ -182,10 +196,12 @@ class PDFConverter:
                 # styles here; we just make everything "body" and then look at the font names
                 # to determine if they are Italic or bold or bold/italic.
 
-                if "italic" in style_string:
-                    style = enums.Style.BODY
-                elif "bold" in style_string:
+                if "italic" in style_string and not "bold" in style_string:
+                    style = enums.Style.BODY_ITALIC
+                elif "bold" in style_string and not "italic" in style_string:
                     style = enums.Style.BODY_BOLD
+                elif "bold" in style_string and "italic" in style_string:
+                    style = enums.Style.BODY_BOLD_ITALIC
                 else:
                     style = enums.Style.BODY
             elif (
@@ -214,18 +230,82 @@ class PDFConverter:
             self.add_parsed_span(text, style, style_data, origin, location)
             previous_span = span
 
-    def _parsed_spans(self) -> Generator[data.Row, None, None]:
+    def _parsed_spans(self) -> Generator[Tuple[int, data.Row], None, None]:
         """
         generator that yields spans from the parsed page data.
         """
 
-        for row in self._data:
-            yield row
+        for index, row in enumerate(self._data):
+            yield (index, row)
 
     def _parse_title_story(self) -> Story:
         """
         iterates through the first page loading all the text into a story.
         """
+
+        content = FormattedText()
+        story = Story(f"00 ({self._module_name})", text=content)
+
+        # first, skip until we see a big font, > 12 as that's the title
+        for self._current_row_idx, row in self._data_row:
+            if row.style_info.size > 12:
+                logger.info(f"found the title: {row.text}")
+                break
+
+        styledtext = StyledText()
+        para = FormattedParagraph(styledtext)
+        content.append(para)
+        first_paragraph = True
+        segment = None  # type: None | StyledTextSegment
+        for self._current_row_idx, row in self._data_row:
+            if row.location.page != 0:
+                break
+
+            if row.text.strip() == "":
+                if first_paragraph:
+                    first_paragraph = False
+                    continue
+
+                segment = None
+                styledtext = StyledText()
+                para = FormattedParagraph(styledtext)
+                content.append(para)
+                continue
+
+            if segment is not None and segment.is_bold() and row.style_info.italic:
+                segment = StyledTextSegment(
+                    "&#13;" + row.text,
+                    bold=row.style_info.bold,
+                    italic=row.style_info.italic,
+                )
+                styledtext.append(segment)
+                continue
+
+            if segment is not None and row.style_info.bold:
+                segment = StyledTextSegment(
+                    row.text, bold=row.style_info.bold, italic=row.style_info.italic
+                )
+                styledtext = StyledText(segment)
+                para = FormattedParagraph(styledtext)
+                content.append(para)
+                continue
+
+            if (
+                segment is not None
+                and segment.is_bold() == row.style_info.bold
+                and segment.is_italic() == row.style_info.italic
+            ):
+                segment.append(row.text)
+            else:
+                segment = StyledTextSegment(
+                    row.text, bold=row.style_info.bold, italic=row.style_info.italic
+                )
+                styledtext.append(segment)
+
+        return story
+
+    def _parse_story(self) -> Story:
+        pass
 
     def _parse_encounter(self) -> Encounter:
         """
@@ -234,3 +314,7 @@ class PDFConverter:
         """
         encounters = Encounter(self._module_name)
         encounters.append_story(self._parse_title_story())
+        while self._current_row_idx <= len(self._data):
+            story = self._parse_story()
+            encounters.append_story(story)
+        return encounters
