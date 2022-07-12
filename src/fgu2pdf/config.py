@@ -61,7 +61,7 @@ class Config(JSONSerializable):
 
 
 def get_config(module_name: str) -> Config:
-    with open("config2.json", "r", encoding="utf-8") as config_file:
+    with open("config.json", "r", encoding="utf-8") as config_file:
         config_json = config_file.read()
 
     season = module_name.split("-")[0]
