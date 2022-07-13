@@ -286,9 +286,8 @@ class PDFConverter:
                 logger.info(f"found the title: {row.text}")
                 break
 
-        styledtext = StyledText()
-        para = FormattedParagraph(styledtext)
-        content.append(para)
+        paragraph = FormattedParagraph()
+        content.append(paragraph)
         first_paragraph = True
         segment = None  # type: None | StyledTextSegment
 
@@ -302,40 +301,39 @@ class PDFConverter:
                     continue
 
                 segment = None
-                styledtext = StyledText()
-                para = FormattedParagraph(styledtext)
-                content.append(para)
+                paragraph = FormattedParagraph()
+                content.append(paragraph)
                 continue
 
-            if segment is not None and segment.is_bold() and row.style_info.italic:
+            if segment is not None and segment.bold and row.style_info.italic:
                 segment = StyledTextSegment(
                     "&#13;" + row.text,
                     bold=row.style_info.bold,
                     italic=row.style_info.italic,
                 )
-                styledtext.append(segment)
+                paragraph.styled_text.append(segment)
                 continue
 
             if segment is not None and row.style_info.bold:
                 segment = StyledTextSegment(
                     row.text, bold=row.style_info.bold, italic=row.style_info.italic
                 )
-                styledtext = StyledText(segment)
-                para = FormattedParagraph(styledtext)
-                content.append(para)
+                paragraph = FormattedParagraph()
+                paragraph.styled_text.append(segment)
+                content.append(paragraph)
                 continue
 
             if (
                 segment is not None
-                and segment.is_bold() == row.style_info.bold
-                and segment.is_italic() == row.style_info.italic
+                and segment.bold == row.style_info.bold
+                and segment.italic == row.style_info.italic
             ):
                 segment.append(row.text)
             else:
                 segment = StyledTextSegment(
                     row.text, bold=row.style_info.bold, italic=row.style_info.italic
                 )
-                styledtext.append(segment)
+                paragraph.styled_text.append(segment)
 
         return story
 
@@ -362,7 +360,7 @@ class PDFConverter:
         return headings
 
     def _parse_story(self, heading: data.HeadingLocation) -> Story:
-        match heading.htype:
+        match heading.style:
             case data.Style.HEADING_1:
                 self._increment_section(0)
             case data.Style.HEADING_2:
@@ -371,8 +369,36 @@ class PDFConverter:
         content = FormattedText()
         story = Story(f"{self._section_text()} {heading.text}", content)
 
+        paragraph = FormattedParagraph()
+        content.append(paragraph)
+        previous_text = ""
         for row in self._data[heading.start : heading.start + heading.length]:
-            print(row.text)
+            if row.style == heading.style:
+                continue
+
+            if row.style in enums.BODY_STYLES:
+                if row.text.startswith(" ") and previous_text.endswith("."):
+                    # new paragraph
+                    paragraph = FormattedParagraph()
+                    content.append(paragraph)
+                    row.text = row.text.lstrip()
+
+                if paragraph.styled_text.length() > 0 and (
+                    row.style_info.bold == paragraph.styled_text.last_segment.bold
+                    and row.style_info.italic
+                    == paragraph.styled_text.last_segment.italic
+                ):
+                    paragraph.styled_text.last_segment.append(row.text)
+                else:
+                    paragraph.styled_text.append(
+                        StyledTextSegment(
+                            row.text,
+                            bold=row.style_info.bold,
+                            italic=row.style_info.italic,
+                        )
+                    )
+
+            previous_text = row.text
 
         return story
 

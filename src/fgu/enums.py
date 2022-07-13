@@ -32,6 +32,14 @@ class Style(Enum):
     FRAME_BODY = "frame_body"
 
 
+BODY_STYLES = {
+    Style.BODY,
+    Style.BODY_BOLD,
+    Style.BODY_ITALIC,
+    Style.BODY_BOLD_ITALIC,
+}
+
+
 class Position(Enum):
     """
     Enum type for supported position information.

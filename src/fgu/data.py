@@ -68,6 +68,6 @@ class HeadingLocation:
     """
 
     text: str
-    htype: Style
+    style: Style
     start: int
     length: int

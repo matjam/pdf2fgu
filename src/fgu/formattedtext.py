@@ -71,16 +71,19 @@ class StyledTextSegment(FormattedTextObject):
             raise TypeError("must provide a str to append()")
         self._text = self._text + obj
 
+    @property
     def text(self) -> str:
         """
         returns the text of the segment.
         """
         return self._text
 
-    def is_bold(self) -> bool:
+    @property
+    def bold(self) -> bool:
         return self._bold
 
-    def is_italic(self) -> bool:
+    @property
+    def italic(self) -> bool:
         return self._italic
 
 
@@ -89,24 +92,16 @@ class StyledText(FormattedTextObject):
     StyledText contains multiple StyledTextSegments.
     """
 
-    def __init__(self, segment: StyledTextSegment | None = None):
-        self._data = []  # type: List[StyledTextSegment]
-        if segment is not None:
-            self.append(segment)
+    def __init__(self):
+        self._segments = []  # type: List[StyledTextSegment]
 
     def build(self, builder: ET.TreeBuilder):
-        for text in self._data:
+        for text in self._segments:
             text.build(builder)
-
-    def last_segment(self) -> StyledTextSegment:
-        """
-        returns the last segment.
-        """
-        return self._data[-1]
 
     def length(self) -> int:
         total_length = 0
-        for text in self._data:
+        for text in self._segments:
             total_length = total_length + text.length()
         return total_length
 
@@ -114,7 +109,18 @@ class StyledText(FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
 
-        self._data.append(obj)
+        self._segments.append(obj)
+
+    @property
+    def last_segment(self) -> StyledTextSegment:
+        """
+        returns the last segment.
+        """
+        return self._segments[-1]
+
+    @property
+    def segments(self):
+        return self._segments
 
 
 class FormattedList(FormattedTextObject):
@@ -151,24 +157,25 @@ class FormattedParagraph(FormattedTextObject):
     represents a single paragraph.
     """
 
-    def __init__(self, text: StyledText):
-        if text is not None:
-            self._text = text
-        else:
-            self._text = StyledText([])
+    def __init__(self):
+        self._styled_text = StyledText()
 
     def build(self, builder: ET.TreeBuilder):
         builder.start("p", {})
-        self._text.build(builder)
+        self._styled_text.build(builder)
         builder.end("p")
 
     def length(self) -> int:
-        return self._text.length()
+        return self._styled_text.length()
 
     def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
-        self._text.append(obj)
+        self._styled_text.append(obj)
+
+    @property
+    def styled_text(self):
+        return self._styled_text
 
 
 class FormattedFrame(FormattedTextObject):
