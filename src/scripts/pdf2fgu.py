@@ -14,11 +14,19 @@ from fgu.pdfconverter import PDFConverter
 @click.command()
 @click.argument("pdf_path")
 @click.argument("fgu_path")
-def cli(pdf_path, fgu_path):
+@click.option(
+    "--json/--no-json",
+    help="enable/disable JSON output.",
+    default=False,
+)
+def cli(pdf_path, fgu_path, json: bool):
     """
     Performs an import for all .pdf files in PDF_PATH and updates/creates
     campaigns in FGU_PATH.
     """
+    if json:
+        logger.info("json output enabled")
+
     files = os.listdir(pdf_path)
     files.sort()
     for file in files:

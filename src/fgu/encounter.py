@@ -24,7 +24,13 @@ class Story:
 
     _currentID = 1
 
-    def __init__(self, name, *, locked=False, text: FormattedText):
+    def __init__(
+        self,
+        name: str,
+        text: FormattedText,
+        *,
+        locked=False,
+    ):
         self.id = Story._currentID
         Story._currentID = Story._currentID + 1
         self.name = name

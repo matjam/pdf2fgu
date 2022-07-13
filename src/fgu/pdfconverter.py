@@ -1,6 +1,7 @@
 """
 Core logic for the conversion of AL PDFs into FGU campaigns.
 """
+import json
 from typing import Any, Dict, Generator, List, Tuple
 
 import fitz
@@ -25,7 +26,13 @@ from fgu.formattedtext import (
 
 class PDFConverter:
     def __init__(
-        self, pdf_path: str, module_file: str, module_name: str, fgu_path: str
+        self,
+        pdf_path: str,
+        module_file: str,
+        module_name: str,
+        fgu_path: str,
+        *,
+        json_enabled: bool = False,
     ):
         self._pdf_path = pdf_path
         self._campaign_path = f"{fgu_path}/campaigns/pdf2fgu - {module_name}"
@@ -34,7 +41,9 @@ class PDFConverter:
         self._module_name = module_name
         self._config = get_config(self._module_code)
         self._pages = []  # type: Any
+        self._json_enabled = json_enabled
         self._output = None
+        self._sections = [0, 0, 0]
 
         # maps the "style string" we compute from all the style data in the pdf
         # to a specific style we have defined in the config/enums.
@@ -59,6 +68,27 @@ class PDFConverter:
             text_page = page.get_textpage()
             text_dict = text_page.extractDICT()
             self._pages.append(text_dict)
+
+    def _section_text(self):
+        """
+        generates a string that is used as the prefix for new Story.
+        """
+        if self._sections[1] == 0 and self._sections[2] == 0:
+            return f"{self._sections[0]:02}"
+        if self._sections[2] == 0:
+            return f"{self._sections[0]:02}.{self._sections[1]:02}"
+        return f"{self._sections[0]:02}.{self._sections[1]:02}.{self._sections[2]:02}"
+
+    def _increment_section(self, section: int):
+        if section == 0:
+            self._sections[0] = self._sections[0] + 1
+            self._sections[1] = 0
+            self._sections[2] = 0
+        elif section == 1:
+            self._sections[1] = self._sections[1] + 1
+            self._sections[2] = 0
+        else:
+            self._sections[2] = self._sections[2] + 1
 
     def _find_style_string_for_text(self, text) -> str | None:
         """
@@ -115,7 +145,8 @@ class PDFConverter:
         )
 
         self._data.append(row)
-        print(row.to_json(), file=self._output)
+        if self._json_enabled:
+            print(row.to_json(), file=self._output)
 
     def _page_spans(self):
         """
@@ -136,9 +167,12 @@ class PDFConverter:
         return f"{span['font']} {span['size']} {span['flags']} {span['color']}".lower()
 
     def _parse(self):
-        with open(
-            f"json/{self._module_name}.ndjson", "w", encoding="utf-8"
-        ) as self._output:
+        if self._json_enabled:
+            with open(
+                f"json/{self._module_name}.ndjson", "w", encoding="utf-8"
+            ) as self._output:
+                self._parse_spans()
+        else:
             self._parse_spans()
 
     def _parse_spans(self):
@@ -243,6 +277,9 @@ class PDFConverter:
         iterates through the first page loading all the text into a story.
         """
 
+        content = FormattedText()
+        story = Story(f"00 ({self._module_name})", content)
+
         # first, skip until we see a big font, > 12 as that's the title
         for self._current_row_idx, row in self._data_row:
             if row.style_info.size > 12:
@@ -254,6 +291,7 @@ class PDFConverter:
         content.append(para)
         first_paragraph = True
         segment = None  # type: None | StyledTextSegment
+
         for self._current_row_idx, row in self._data_row:
             if row.location.page != 0:
                 break
@@ -301,8 +339,42 @@ class PDFConverter:
 
         return story
 
-    def _parse_story(self) -> Story:
-        pass
+    def _find_headings(self) -> List[data.HeadingLocation]:
+        # eat data until we get to the first heading
+        headings = []  # type: List[data.HeadingLocation]
+
+        for i, row in self._parsed_spans():
+            if row.style == data.Style.HEADING_1 or row.style == data.Style.HEADING_2:
+                if len(headings) > 0:
+                    if i == headings[-1].start + 1:
+                        # this heading wrapped
+                        headings[-1].text += row.text
+                        continue
+
+                    # set the previous heading length
+                    headings[-1].length = i - headings[-1].start
+
+                found_heading = data.HeadingLocation(row.text, row.style, i, 0)
+                headings.append(found_heading)
+
+        headings[-1].length = i - headings[-1].start
+        logger.info(f"found {len(headings)} headings ...")
+        return headings
+
+    def _parse_story(self, heading: data.HeadingLocation) -> Story:
+        match heading.htype:
+            case data.Style.HEADING_1:
+                self._increment_section(0)
+            case data.Style.HEADING_2:
+                self._increment_section(1)
+
+        content = FormattedText()
+        story = Story(f"{self._section_text()} {heading.text}", content)
+
+        for row in self._data[heading.start : heading.start + heading.length]:
+            print(row.text)
+
+        return story
 
     def _parse_encounter(self) -> Encounter:
         """
@@ -311,7 +383,8 @@ class PDFConverter:
         """
         encounters = Encounter(self._module_name)
         encounters.append_story(self._parse_title_story())
-        while self._current_row_idx <= len(self._data):
-            story = self._parse_story()
-            encounters.append_story(story)
+
+        for heading in self._find_headings():
+            encounters.append_story(self._parse_story(heading))
+
         return encounters

@@ -59,3 +59,15 @@ class Row(JSONWizard):
     style_info: StyleInfo
     position: Origin
     location: Location
+
+
+@dataclass
+class HeadingLocation:
+    """
+    data about the row start/end for each heading found in the document.
+    """
+
+    text: str
+    htype: Style
+    start: int
+    length: int
