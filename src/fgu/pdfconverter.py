@@ -372,12 +372,34 @@ class PDFConverter:
         paragraph = FormattedParagraph()
         content.append(paragraph)
         previous_text = ""
-        for row in self._data[heading.start : heading.start + heading.length]:
+
+        # using a loop here because we can skip ahead depending on what we find
+        row_index = heading.start
+        while row_index < heading.start + heading.length:
+            row = self._data[row_index]
+
             if row.style == heading.style:
+                row_index += 1
+                continue
+
+            if row.style == enums.Style.BULLET:
+                list, rows_processed = self._parse_list(
+                    row_index, heading.start + heading.length
+                )
+                row_index += rows_processed
+                content.append(list)
+                paragraph = FormattedParagraph()
+                content.append(paragraph)
                 continue
 
             if row.style in enums.BODY_STYLES:
-                if row.text.startswith(" ") and previous_text.endswith("."):
+                if row.text.startswith((". ", ", ")) and paragraph.length() > 0:
+                    paragraph.styled_text.last_segment.append(row.text[0])
+                    row.text = row.text[1:]
+
+                if row.text.startswith(" ") and previous_text.endswith(
+                    (". ", ".  ", ": ")
+                ):
                     # new paragraph
                     paragraph = FormattedParagraph()
                     content.append(paragraph)
@@ -399,8 +421,22 @@ class PDFConverter:
                     )
 
             previous_text = row.text
+            row_index += 1
 
         return story
+
+    def _parse_list(self, row_start: int, row_end: int) -> Tuple[FormattedList, int]:
+        """
+        returns the parsed FormattedList and how many lines it ate.
+
+        What this does is grab the bullet, then finds the next body text
+        that isn't empty, then starts reading lines until another
+        bullet. We keep doing that until either we hit row_end or we
+        find ourselves on a line that is further to the left than the
+        previous line, as this is a sure indicator we're no longer in
+        the list.
+        """
+        # TODO: bullet logic; skip a empty span then keep processing lines
 
     def _parse_encounter(self) -> Encounter:
         """

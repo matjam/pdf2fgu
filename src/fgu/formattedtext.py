@@ -165,9 +165,6 @@ class FormattedParagraph(FormattedTextObject):
         self._styled_text.build(builder)
         builder.end("p")
 
-    def length(self) -> int:
-        return self._styled_text.length()
-
     def append(self, obj: str | FormattedTextObject):
         if obj is None or not isinstance(obj, StyledTextSegment):
             raise TypeError("must provide a StyledTextSegment to append()")
@@ -176,6 +173,9 @@ class FormattedParagraph(FormattedTextObject):
     @property
     def styled_text(self):
         return self._styled_text
+
+    def length(self) -> int:
+        return self._styled_text.length()
 
 
 class FormattedFrame(FormattedTextObject):
